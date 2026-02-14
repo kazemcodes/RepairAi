@@ -113,6 +113,7 @@ class AIService {
       body: jsonEncode({
         'model': model,
         'messages': messages,
+        'max_tokens': 4096,
       }),
     );
 
@@ -146,6 +147,75 @@ Provide a detailed index description.
 ''';
 
     return sendMessage(prompt);
+  }
+
+  /// Fetch available models from Gemini API
+  Future<List<String>> fetchGeminiModels() async {
+    final apiKey = await _settingsService.getGeminiApiKey();
+    if (apiKey == null || apiKey.isEmpty) {
+      return [];
+    }
+
+    final url = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey'
+    );
+
+    try {
+      final response = await _httpClient.get(url);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final models = data['models'] as List?;
+        
+        if (models != null) {
+          return models
+              .map((m) => m['name'] as String?)
+              .whereType<String>()
+              .map((name) => name.replaceFirst('models/', ''))
+              .where((name) => name.contains('generateContent') || name.contains('gemini'))
+              .toList();
+        }
+      }
+    } catch (e) {
+      // Return empty list on error, fallback to defaults
+    }
+    
+    return [];
+  }
+
+  /// Fetch available models from OpenRouter API
+  Future<List<String>> fetchOpenRouterModels() async {
+    final apiKey = await _settingsService.getOpenRouterApiKey();
+    if (apiKey == null || apiKey.isEmpty) {
+      return [];
+    }
+
+    final url = Uri.parse('https://openrouter.ai/api/v1/models');
+
+    try {
+      final response = await _httpClient.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final models = data['data'] as List?;
+        
+        if (models != null) {
+          return models
+              .map((m) => m['id'] as String?)
+              .whereType<String>()
+              .toList();
+        }
+      }
+    } catch (e) {
+      // Return empty list on error, fallback to defaults
+    }
+    
+    return [];
   }
 }
 

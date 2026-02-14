@@ -117,3 +117,9 @@ final themeModeProvider = StateProvider<String>((ref) => 'system');
 
 /// Language state provider
 final languageProvider = StateProvider<String>((ref) => 'en');
+
+/// Selected AI engine provider
+final selectedEngineProvider = StateProvider<String>((ref) => 'gemini');
+
+/// Selected AI model provider
+final selectedModelProvider = StateProvider<String>((ref) => 'gemini-2.0-flash');

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/services/ai_service.dart';
 import '../../../../shared/services/settings_service.dart';
@@ -366,25 +367,58 @@ I can help with:
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        message.content,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.5,
-                          color: isUser 
-                              ? Colors.white 
-                              : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
-                        ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: SelectableText(
+                              message.content,
+                              style: TextStyle(
+                                fontSize: 14,
+                                height: 1.5,
+                                color: isUser 
+                                    ? Colors.white 
+                                    : (isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                              ),
+                            ),
+                          ),
+                          // Copy button for AI messages
+                          if (!isUser)
+                            IconButton(
+                              icon: Icon(
+                                Icons.copy,
+                                size: 16,
+                                color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                              ),
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: message.content));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Copied to clipboard'),
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
+                              },
+                              tooltip: 'Copy',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        _formatTime(message.timestamp),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: isUser 
-                              ? Colors.white60 
-                              : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _formatTime(message.timestamp),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isUser 
+                                  ? Colors.white60 
+                                  : (isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/services/settings_service.dart';
+import '../../../../shared/services/ai_service.dart';
 import '../../../community/presentation/pages/community_page.dart';
 
 /// Settings page
@@ -15,6 +16,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   final _geminiKeyController = TextEditingController();
   final _openRouterKeyController = TextEditingController();
   bool _isLoading = false;
+  String _selectedEngine = 'gemini';
+  String? _selectedModel;
+  List<String> _availableModels = [];
 
   @override
   void initState() {
@@ -24,14 +28,68 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _loadSettings() async {
     final settings = ref.read(settingsServiceProvider);
+    final aiService = ref.read(aiServiceProvider);
     final geminiKey = await settings.getGeminiApiKey();
     final openRouterKey = await settings.getOpenRouterApiKey();
+    final defaultModel = await settings.getDefaultModel();
+    
+    // Fetch available models from APIs
+    final List<String> models = [];
+    
+    if (geminiKey != null && geminiKey.isNotEmpty) {
+      final geminiModels = await aiService.fetchGeminiModels();
+      models.addAll(geminiModels);
+    }
+    
+    if (openRouterKey != null && openRouterKey.isNotEmpty) {
+      final openRouterModels = await aiService.fetchOpenRouterModels();
+      models.addAll(openRouterModels);
+    }
     
     if (!mounted) return;
     setState(() {
       _geminiKeyController.text = geminiKey ?? '';
       _openRouterKeyController.text = openRouterKey ?? '';
+      _selectedModel = defaultModel;
+      _selectedEngine = defaultModel.startsWith('gemini') ? 'gemini' : 'openrouter';
+      _availableModels = models;
+      
+      // Reset selected model if not in list
+      if (_selectedModel != null && !_availableModels.contains(_selectedModel)) {
+        _selectedModel = _availableModels.isNotEmpty ? _availableModels.first : null;
+      }
     });
+  }
+
+  void _updateAvailableModels() {
+    // Use the already fetched models from API
+    // This method is kept for backwards compatibility
+    // Models are now fetched from API in _loadSettings and after saving keys
+    
+    // If list is empty, provide fallback defaults
+    if (_availableModels.isEmpty) {
+      _availableModels = [];
+      if (_geminiKeyController.text.isNotEmpty) {
+        _availableModels.addAll([
+          'gemini-2.0-flash',
+          'gemini-1.5-pro',
+          'gemini-1.5-flash',
+        ]);
+      }
+      if (_openRouterKeyController.text.isNotEmpty) {
+        _availableModels.addAll([
+          'openai/gpt-4o-mini',
+          'openai/gpt-4o',
+          'anthropic/claude-3-haiku',
+          'google/gemma-2-27b',
+        ]);
+      }
+    }
+    
+    // Reset selected model if it's not in the list
+    if (_selectedModel != null && !_availableModels.contains(_selectedModel)) {
+      _selectedModel = _availableModels.isNotEmpty ? _availableModels.first : null;
+    }
   }
 
   @override
@@ -47,6 +105,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       final settings = ref.read(settingsServiceProvider);
       await settings.setGeminiApiKey(_geminiKeyController.text);
+      
+      // Fetch models from Gemini API
+      final aiService = ref.read(aiServiceProvider);
+      final geminiModels = await aiService.fetchGeminiModels();
+      
+      setState(() {
+        // Add new models to available models
+        for (final model in geminiModels) {
+          if (!_availableModels.contains(model)) {
+            _availableModels.add(model);
+          }
+        }
+      });
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Gemini API key saved')),
@@ -65,6 +137,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       final settings = ref.read(settingsServiceProvider);
       await settings.setOpenRouterApiKey(_openRouterKeyController.text);
+      
+      // Fetch models from OpenRouter API
+      final aiService = ref.read(aiServiceProvider);
+      final openRouterModels = await aiService.fetchOpenRouterModels();
+      
+      setState(() {
+        // Add new models to available models
+        for (final model in openRouterModels) {
+          if (!_availableModels.contains(model)) {
+            _availableModels.add(model);
+          }
+        }
+      });
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('OpenRouter API key saved')),
@@ -85,6 +171,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
       body: ListView(
         children: [
+          // AI Engine Section
+          _buildSectionHeader('AI Engine'),
+          _buildEngineSelector(),
+          _buildModelSelector(),
+          
+          const Divider(),
+          
           // API Keys Section
           _buildSectionHeader('API Keys'),
           _buildApiKeyTile(
@@ -128,6 +221,87 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             title: const Text('About'),
             subtitle: const Text('Version 1.0.0'),
             onTap: () => _showAboutDialog(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEngineSelector() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Select AI Engine',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 8),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                value: 'gemini',
+                label: Text('Gemini'),
+                icon: Icon(Icons.psychology),
+              ),
+              ButtonSegment(
+                value: 'openrouter',
+                label: Text('OpenRouter'),
+                icon: Icon(Icons.hub),
+              ),
+            ],
+            selected: {_selectedEngine},
+            onSelectionChanged: (selection) {
+              setState(() {
+                _selectedEngine = selection.first;
+                _updateAvailableModels();
+                // Set default model for the engine
+                if (_selectedEngine == 'gemini' && _availableModels.isNotEmpty) {
+                  _selectedModel = _availableModels.first;
+                } else if (_selectedEngine == 'openrouter' && _availableModels.isNotEmpty) {
+                  _selectedModel = _availableModels.first;
+                }
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModelSelector() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Select Model',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            value: _availableModels.contains(_selectedModel) ? _selectedModel : null,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            hint: const Text('Select a model'),
+            isExpanded: true,
+            items: _availableModels.map((model) {
+              return DropdownMenuItem(
+                value: model,
+                child: Text(model, overflow: TextOverflow.ellipsis),
+              );
+            }).toList(),
+            onChanged: (value) async {
+              setState(() => _selectedModel = value);
+              if (value != null) {
+                final settings = ref.read(settingsServiceProvider);
+                await settings.setDefaultModel(value);
+              }
+            },
           ),
         ],
       ),

@@ -25,24 +25,6 @@ class _ShellPageState extends State<ShellPage> {
       route: AppRoutes.home,
     ),
     _NavItem(
-      icon: Icons.schema_outlined,
-      selectedIcon: Icons.schema,
-      label: 'Schematics',
-      route: AppRoutes.schematic,
-    ),
-    _NavItem(
-      icon: Icons.lightbulb_outline,
-      selectedIcon: Icons.lightbulb,
-      label: 'Solutions',
-      route: AppRoutes.solution,
-    ),
-    _NavItem(
-      icon: Icons.chat_outlined,
-      selectedIcon: Icons.chat,
-      label: 'AI Chat',
-      route: AppRoutes.chatbox,
-    ),
-    _NavItem(
       icon: Icons.people_outline,
       selectedIcon: Icons.people,
       label: 'Community',

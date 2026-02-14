@@ -17,8 +17,8 @@ class AppConstants {
   static const String supabaseAnonKey = 'your-anon-key';
 
   // GitHub
-  static const String githubRepo = 'repairai/repairai';
-  static const String githubRawBase = 'https://raw.githubusercontent.com/repairai/repairai/main';
+  static const String githubRepo = 'kazemcodes/RepairAi-files';
+  static const String githubRawBase = 'https://raw.githubusercontent.com/kazemcodes/RepairAi-files/main';
   static const String indexJsonUrl = '$githubRawBase/index.json';
 
   // AI Models
