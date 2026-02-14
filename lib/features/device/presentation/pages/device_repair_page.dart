@@ -5,9 +5,198 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:ui';
 import '../../../../shared/services/github_service.dart';
 import '../../../../shared/services/ai_service.dart';
 import '../../../../core/theme/app_colors.dart';
+
+/// Glassmorphism Container - Modern frosted glass effect
+class GlassCard extends StatelessWidget {
+  final Widget child;
+  final double blur;
+  final double opacity;
+  final BorderRadius? borderRadius;
+  final EdgeInsets? padding;
+  final EdgeInsets? margin;
+  final Color? borderColor;
+  final double borderWidth;
+
+  const GlassCard({
+    super.key,
+    required this.child,
+    this.blur = 10,
+    this.opacity = 0.1,
+    this.borderRadius,
+    this.padding,
+    this.margin,
+    this.borderColor,
+    this.borderWidth = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Container(
+      margin: margin,
+      child: ClipRRect(
+        borderRadius: borderRadius ?? BorderRadius.circular(16),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color: (isDark ? Colors.white : Colors.black).withOpacity(opacity),
+              borderRadius: borderRadius ?? BorderRadius.circular(16),
+              border: Border.all(
+                color: borderColor ?? (isDark ? Colors.white24 : Colors.black12),
+                width: borderWidth,
+              ),
+            ),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Modern Gradient Card with glass effect
+class GlassGradientCard extends StatelessWidget {
+  final Widget child;
+  final LinearGradient? gradient;
+  final EdgeInsets? padding;
+  final EdgeInsets? margin;
+  final BorderRadius? borderRadius;
+  final VoidCallback? onTap;
+  final bool isSelected;
+
+  const GlassGradientCard({
+    super.key,
+    required this.child,
+    this.gradient,
+    this.padding,
+    this.margin,
+    this.borderRadius,
+    this.onTap,
+    this.isSelected = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final defaultGradient = isDark
+        ? const LinearGradient(
+            colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+        : const LinearGradient(
+            colors: [Colors.white, Color(0xFFF8FAFC)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          );
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: margin ?? const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: BoxDecoration(
+          gradient: isSelected ? AppColors.primaryGradient : (gradient ?? defaultGradient),
+          borderRadius: borderRadius ?? BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected 
+                ? AppColors.primary.withOpacity(0.5) 
+                : (isDark ? Colors.white12 : Colors.black12),
+            width: isSelected ? 2 : 1,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.3),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: (isDark ? Colors.black : Colors.grey).withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+        ),
+        child: ClipRRect(
+          borderRadius: borderRadius ?? BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: Container(
+              padding: padding ?? const EdgeInsets.all(16),
+              child: child,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Modern Icon Button with gradient
+class GradientIconButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool isLoading;
+  final double size;
+  final Color? color;
+
+  const GradientIconButton({
+    super.key,
+    required this.icon,
+    this.onPressed,
+    this.isLoading = false,
+    this.size = 40,
+    this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: isLoading ? null : onPressed,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          gradient: AppColors.primaryGradient,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Center(
+          child: isLoading
+              ? SizedBox(
+                  width: size * 0.4,
+                  height: size * 0.4,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Icon(
+                  icon,
+                  color: color ?? Colors.white,
+                  size: size * 0.5,
+                ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Combined Schematic + Solution + Chat Page
 class DeviceRepairPage extends ConsumerStatefulWidget {
@@ -366,68 +555,168 @@ Please provide a helpful, technical answer based on the schematic data above. If
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Scaffold(
-      body: Column(
-        children: [
-          // Device Selector
-          _buildDeviceSelector(isDark),
-          
-          // Tab Bar
-          Container(
-            color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-            child: TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(icon: Icon(Icons.schema), text: 'Schematics'),
-                Tab(icon: Icon(Icons.lightbulb), text: 'Solutions'),
-                Tab(icon: Icon(Icons.chat), text: 'AI Chat'),
-              ],
-            ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: isDark
+              ? const LinearGradient(
+                  colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : const LinearGradient(
+                  colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Device Selector with Glass effect
+              GlassCard(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                borderRadius: BorderRadius.circular(20),
+                opacity: isDark ? 0.15 : 0.25,
+                child: _buildDeviceSelector(isDark),
+              ),
+              
+              // Tab Bar with Glass effect
+              GlassCard(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(4),
+                borderRadius: BorderRadius.circular(16),
+                opacity: isDark ? 0.15 : 0.25,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: isDark ? Colors.black12 : Colors.white24,
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    indicator: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primary.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    labelColor: Colors.white,
+                    unselectedLabelColor: isDark ? Colors.white60 : Colors.black54,
+                    dividerColor: Colors.transparent,
+                    tabs: const [
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.architecture, size: 20),
+                            SizedBox(width: 8),
+                            Text('Schematics'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.lightbulb_outline, size: 20),
+                            SizedBox(width: 8),
+                            Text('Solutions'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.smart_toy_outlined, size: 20),
+                            SizedBox(width: 8),
+                            Text('AI Chat'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Tab Content
+              Expanded(
+                child: GlassCard(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(8),
+                  borderRadius: BorderRadius.circular(20),
+                  opacity: isDark ? 0.15 : 0.25,
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildSchematicsTab(isDark),
+                      _buildSolutionsTab(isDark),
+                      _buildChatTab(isDark),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          
-          // Tab Content
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildSchematicsTab(isDark),
-                _buildSolutionsTab(isDark),
-                _buildChatTab(isDark),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildDeviceSelector(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? AppColors.borderDark : AppColors.borderLight,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Manufacturer dropdown
-          Expanded(
-            child: _manufacturers.isEmpty
-                ? const Center(child: Text('Loading...'))
-                : DropdownButtonFormField<String>(
+    return Row(
+      children: [
+        // Manufacturer dropdown
+        Expanded(
+          child: _manufacturers.isEmpty
+              ? Center(
+                  child: Text(
+                    'Loading devices...',
+                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                  ),
+                )
+              : Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                  ),
+                  child: DropdownButtonFormField<String>(
                     value: _selectedManufacturer,
-                    decoration: const InputDecoration(
+                    dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    decoration: InputDecoration(
                       labelText: 'Manufacturer',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      prefixIcon: Icon(Icons.phone_android, color: isDark ? Colors.white70 : Colors.black54),
                     ),
                     items: _manufacturers.map((m) {
                       return DropdownMenuItem(
                         value: m.name,
-                        child: Text(m.name.toUpperCase()),
+                        child: Text(
+                          m.name.toUpperCase(),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
                       );
                     }).toList(),
                     onChanged: (value) {
@@ -439,19 +728,39 @@ Please provide a helpful, technical answer based on the schematic data above. If
                       });
                     },
                   ),
-          ),
-          const SizedBox(width: 16),
-          
-          // Model dropdown
-          Expanded(
-            child: _manufacturers.isEmpty
-                ? const Center(child: Text('No devices found'))
-                : DropdownButtonFormField<String>(
+                ),
+        ),
+        const SizedBox(width: 12),
+        
+        // Model dropdown
+        Expanded(
+          child: _manufacturers.isEmpty
+              ? const SizedBox()
+              : Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                  ),
+                  child: DropdownButtonFormField<String>(
                     value: _selectedModel,
-                    decoration: const InputDecoration(
+                    dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    decoration: InputDecoration(
                       labelText: 'Model',
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.accent, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      prefixIcon: Icon(Icons.model_training, color: isDark ? Colors.white70 : Colors.black54),
                     ),
                     items: _manufacturers.isNotEmpty
                         ? _manufacturers
@@ -461,7 +770,13 @@ Please provide a helpful, technical answer based on the schematic data above. If
                             .map((m) {
                           return DropdownMenuItem(
                             value: m,
-                            child: Text(m.toUpperCase()),
+                            child: Text(
+                              m.toUpperCase(),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? Colors.white : Colors.black87,
+                              ),
+                            ),
                           );
                         }).toList()
                         : [],
@@ -472,17 +787,17 @@ Please provide a helpful, technical answer based on the schematic data above. If
                       });
                     },
                   ),
-          ),
-          const SizedBox(width: 8),
-          
-          // Refresh button
-          IconButton(
-            onPressed: _loadManufacturers,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
+                ),
+        ),
+        const SizedBox(width: 8),
+        
+        // Refresh button with gradient
+        GradientIconButton(
+          icon: Icons.refresh,
+          onPressed: _loadManufacturers,
+          size: 48,
+        ),
+      ],
     );
   }
 
