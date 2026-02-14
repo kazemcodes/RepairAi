@@ -24,4 +24,7 @@ Thumbs.db
 
 # Logs
 *.log
-./kiro
+
+# Kiro IDE
+.kiro/
+.kilocode/
