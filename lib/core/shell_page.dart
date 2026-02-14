@@ -23,18 +23,21 @@ class _ShellPageState extends State<ShellPage> {
       selectedIcon: Icons.dashboard,
       label: 'Dashboard',
       route: AppRoutes.home,
+      routes: ['/schematic', '/solution', '/chat', '/device'], // Child routes to highlight dashboard
     ),
     _NavItem(
       icon: Icons.people_outline,
       selectedIcon: Icons.people,
       label: 'Community',
       route: AppRoutes.community,
+      routes: [],
     ),
     _NavItem(
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
       label: 'Settings',
       route: AppRoutes.settings,
+      routes: [],
     ),
   ];
 
@@ -47,7 +50,10 @@ class _ShellPageState extends State<ShellPage> {
   void _updateSelectedIndex() {
     final location = GoRouterState.of(context).uri.path;
     for (int i = 0; i < _navItems.length; i++) {
-      if (location.startsWith(_navItems[i].route)) {
+      // Check exact match or if the route is in the child routes list
+      final navRoutes = _navItems[i].routes ?? [];
+      if (location == _navItems[i].route || 
+          navRoutes.any((r) => location.startsWith(r))) {
         if (_selectedIndex != i) {
           setState(() => _selectedIndex = i);
         }
@@ -273,11 +279,13 @@ class _NavItem {
   final IconData selectedIcon;
   final String label;
   final String route;
+  final List<String> routes; // Child routes that should also highlight this nav item
 
   _NavItem({
     required this.icon,
     required this.selectedIcon,
     required this.label,
     required this.route,
+    this.routes = const [], // Default empty list
   });
 }

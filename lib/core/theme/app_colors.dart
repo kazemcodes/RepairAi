@@ -80,4 +80,17 @@ class AppColors {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
+
+  // Background Gradients
+  static const LinearGradient backgroundGradientLight = LinearGradient(
+    colors: [Color(0xFFF8FAFC), Color(0xFFE2E8F0)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  static const LinearGradient backgroundGradientDark = LinearGradient(
+    colors: [Color(0xFF0F172A), Color(0xFF020617)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
 }
