@@ -1,70 +1,69 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/app_constants.dart';
 
 /// Settings service for managing app settings and API keys
 class SettingsService {
-  final FlutterSecureStorage _secureStorage;
+  final SharedPreferences _prefs;
 
-  SettingsService(this._secureStorage);
+  SettingsService(this._prefs);
 
   // Theme settings
   Future<void> setThemeMode(String mode) async {
-    await _secureStorage.write(key: 'theme_mode', value: mode);
+    await _prefs.setString('theme_mode', mode);
   }
 
   Future<String> getThemeMode() async {
-    return await _secureStorage.read(key: 'theme_mode') ?? 'system';
+    return _prefs.getString('theme_mode') ?? 'system';
   }
 
   // Language settings
   Future<void> setLanguage(String language) async {
-    await _secureStorage.write(key: 'language', value: language);
+    await _prefs.setString('language', language);
   }
 
   Future<String> getLanguage() async {
-    return await _secureStorage.read(key: 'language') ?? 'en';
+    return _prefs.getString('language') ?? 'en';
   }
 
   // API Keys
   Future<void> setGeminiApiKey(String key) async {
-    await _secureStorage.write(key: AppConstants.geminiApiKeyStorage, value: key);
+    await _prefs.setString(AppConstants.geminiApiKeyStorage, key);
   }
 
   Future<String?> getGeminiApiKey() async {
-    return await _secureStorage.read(key: AppConstants.geminiApiKeyStorage);
+    return _prefs.getString(AppConstants.geminiApiKeyStorage);
   }
 
   Future<void> setOpenRouterApiKey(String key) async {
-    await _secureStorage.write(key: AppConstants.openRouterApiKeyStorage, value: key);
+    await _prefs.setString(AppConstants.openRouterApiKeyStorage, key);
   }
 
   Future<String?> getOpenRouterApiKey() async {
-    return await _secureStorage.read(key: AppConstants.openRouterApiKeyStorage);
+    return _prefs.getString(AppConstants.openRouterApiKeyStorage);
   }
 
   Future<void> setDefaultModel(String model) async {
-    await _secureStorage.write(key: AppConstants.defaultModelStorage, value: model);
+    await _prefs.setString(AppConstants.defaultModelStorage, model);
   }
 
   Future<String> getDefaultModel() async {
-    return await _secureStorage.read(key: AppConstants.defaultModelStorage) ?? 
+    return _prefs.getString(AppConstants.defaultModelStorage) ?? 
            AppConstants.defaultGeminiModel;
   }
 
   // Offline mode
   Future<void> setOfflineMode(bool enabled) async {
-    await _secureStorage.write(key: 'offline_mode', value: enabled.toString());
+    await _prefs.setBool('offline_mode', enabled);
   }
 
   Future<bool> getOfflineMode() async {
-    final value = await _secureStorage.read(key: 'offline_mode');
-    return value == 'true';
+    return _prefs.getBool('offline_mode') ?? false;
   }
 
   // Cache settings
   Future<void> clearCache() async {
-    await _secureStorage.deleteAll();
+    await _prefs.clear();
   }
 
   // Check if API is configured
@@ -104,8 +103,14 @@ class SettingsService {
 
 /// Settings service provider
 final settingsServiceProvider = Provider<SettingsService>((ref) {
-  return SettingsService(const FlutterSecureStorage());
+  throw UnimplementedError('SettingsService must be initialized with SharedPreferences');
 });
+
+/// Initialize settings service with SharedPreferences
+Future<SettingsService> initializeSettingsService() async {
+  final prefs = await SharedPreferences.getInstance();
+  return SettingsService(prefs);
+}
 
 /// Theme mode state provider
 final themeModeProvider = StateProvider<String>((ref) => 'system');

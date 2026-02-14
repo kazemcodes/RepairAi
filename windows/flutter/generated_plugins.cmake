@@ -4,7 +4,6 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
-  flutter_secure_storage_windows
   share_plus
   sqlite3_flutter_libs
   url_launcher_windows

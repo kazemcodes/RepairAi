@@ -1,5 +1,5 @@
 name: repair_ai
-description: "AI-powered mobile repair assistant for technicians"
+description: "AI-powered mobile repair assistant for technicians - Desktop Edition"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -12,6 +12,8 @@ dependencies:
   
   # UI
   cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+  flex_color_scheme: ^8.1.1
   
   # State Management
   flutter_riverpod: ^2.6.1
@@ -30,7 +32,7 @@ dependencies:
   http: ^1.3.0
   
   # Secure Storage (API keys)
-  flutter_secure_storage: ^9.2.4
+  shared_preferences: ^2.3.5
   
   # Images
   cached_network_image: ^3.4.1

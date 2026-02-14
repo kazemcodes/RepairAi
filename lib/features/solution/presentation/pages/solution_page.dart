@@ -28,10 +28,12 @@ class _SolutionPageState extends ConsumerState<SolutionPage> {
   }
 
   Future<void> _loadSolutions() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final github = ref.read(githubServiceProvider);
       final index = await github.fetchIndex();
+      if (!mounted) return;
       setState(() {
         _solutions = index.solutions;
       });
@@ -42,7 +44,9 @@ class _SolutionPageState extends ConsumerState<SolutionPage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -52,10 +56,12 @@ class _SolutionPageState extends ConsumerState<SolutionPage> {
       return;
     }
     
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final github = ref.read(githubServiceProvider);
       final results = await github.searchSolutions(query);
+      if (!mounted) return;
       setState(() {
         _solutions = results;
       });
@@ -66,7 +72,9 @@ class _SolutionPageState extends ConsumerState<SolutionPage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

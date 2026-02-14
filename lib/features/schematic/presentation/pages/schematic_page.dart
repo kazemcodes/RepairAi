@@ -28,10 +28,12 @@ class _SchematicPageState extends ConsumerState<SchematicPage> {
   }
 
   Future<void> _loadSchematics() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final github = ref.read(githubServiceProvider);
       final index = await github.fetchIndex();
+      if (!mounted) return;
       setState(() {
         _schematics = index.schematics;
       });
@@ -42,7 +44,9 @@ class _SchematicPageState extends ConsumerState<SchematicPage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -52,10 +56,12 @@ class _SchematicPageState extends ConsumerState<SchematicPage> {
       return;
     }
     
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final github = ref.read(githubServiceProvider);
       final results = await github.searchSchematics(query);
+      if (!mounted) return;
       setState(() {
         _schematics = results;
       });
@@ -66,7 +72,9 @@ class _SchematicPageState extends ConsumerState<SchematicPage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

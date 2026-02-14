@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'l10n/generated/app_localizations.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router.dart';
@@ -9,9 +10,16 @@ import 'shared/services/settings_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
+  // Initialize SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+  final settingsService = SettingsService(prefs);
+  
   runApp(
-    const ProviderScope(
-      child: RepairAIApp(),
+    ProviderScope(
+      overrides: [
+        settingsServiceProvider.overrideWithValue(settingsService),
+      ],
+      child: const RepairAIApp(),
     ),
   );
 }

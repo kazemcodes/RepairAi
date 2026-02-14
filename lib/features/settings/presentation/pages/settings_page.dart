@@ -27,6 +27,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final geminiKey = await settings.getGeminiApiKey();
     final openRouterKey = await settings.getOpenRouterApiKey();
     
+    if (!mounted) return;
     setState(() {
       _geminiKeyController.text = geminiKey ?? '';
       _openRouterKeyController.text = openRouterKey ?? '';
@@ -41,6 +42,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _saveGeminiKey() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final settings = ref.read(settingsServiceProvider);
@@ -51,11 +53,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _saveOpenRouterKey() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final settings = ref.read(settingsServiceProvider);
@@ -66,7 +71,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
