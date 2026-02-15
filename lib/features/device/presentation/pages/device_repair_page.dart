@@ -218,6 +218,36 @@ class _DeviceRepairPageState extends ConsumerState<DeviceRepairPage>
   String? _selectedManufacturer;
   String? _selectedModel;
   
+  // Quick Diagnosis - Symptom-based navigation
+  String? _selectedSymptom;
+  bool _isAnalyzingSymptom = false;
+  static const List<String> _commonSymptoms = [
+    "Won't turn on",
+    "No display",
+    "Not charging",
+    "No sound",
+    "WiFi/Bluetooth issues",
+    "Camera not working",
+    "Overheating",
+    "No SIM detected",
+    "Touch not working",
+    "Battery drain",
+  ];
+  
+  // Symptom to component mapping for AI context
+  static const Map<String, List<String>> _symptomComponents = {
+    "Won't turn on": ["PMIC", "Power button", "Battery connector", "Charging IC"],
+    "No display": ["Display connector", "Backlight IC", "Display driver"],
+    "Not charging": ["Charging IC", "USB connector", "Charging coil", "PMIC"],
+    "No sound": ["Audio IC", "Speaker connector", "Microphone"],
+    "WiFi/Bluetooth issues": ["WiFi module", "Antenna", "RF section"],
+    "Camera not working": ["Camera connector", "Camera IC", "MIPI lines"],
+    "Overheating": ["PMIC", "CPU/GPU", "Charging IC", "Short circuit"],
+    "No SIM detected": ["SIM reader", "Baseband processor", "Antenna"],
+    "Touch not working": ["Touch controller", "Display connector", "Digitizer"],
+    "Battery drain": ["PMIC", "Leaking capacitor", "Background processes"],
+  };
+  
   // Schematics
   List<IndexEntry> _schematics = [];
   String? _selectedSchematic;
@@ -238,23 +268,167 @@ class _DeviceRepairPageState extends ConsumerState<DeviceRepairPage>
   bool _filesTabLoading = true;
   String? _selectedFilePath;
   _FileType? _selectedFileType;
+  
+  // Unified Search
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
+  String _searchQuery = '';
+  List<_SearchResult> _searchResults = [];
+  bool _showSearchResults = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadManufacturers();
+    
+    // Listen to search input changes
+    _searchController.addListener(_onSearchChanged);
   }
-
-  // Load files when model is first selected
-
+  
   @override
   void dispose() {
     _tabController.dispose();
     _chatController.dispose();
     _chatScrollController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
+  
+  void _onSearchChanged() {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query != _searchQuery.toLowerCase()) {
+      setState(() {
+        _searchQuery = query;
+        _updateSearchResults();
+      });
+    }
+  }
+  
+  void _updateSearchResults() {
+    if (_searchQuery.isEmpty) {
+      _searchResults = [];
+      _showSearchResults = false;
+      return;
+    }
+    
+    final results = <_SearchResult>[];
+    
+    // Search manufacturers and models
+    for (final manu in _manufacturers) {
+      // Check manufacturer name
+      if (manu.name.toLowerCase().contains(_searchQuery)) {
+        for (final model in manu.models) {
+          results.add(_SearchResult(
+            type: _SearchResultType.device,
+            title: '${manu.name} $model',
+            subtitle: 'Device',
+            manufacturer: manu.name,
+            model: model,
+          ));
+        }
+      } else {
+        // Check individual models
+        for (final model in manu.models) {
+          if (model.toLowerCase().contains(_searchQuery)) {
+            results.add(_SearchResult(
+              type: _SearchResultType.device,
+              title: '${manu.name} $model',
+              subtitle: 'Device',
+              manufacturer: manu.name,
+              model: model,
+            ));
+          }
+        }
+      }
+    }
+    
+    // Search symptoms
+    for (final symptom in _commonSymptoms) {
+      if (symptom.toLowerCase().contains(_searchQuery)) {
+        results.add(_SearchResult(
+          type: _SearchResultType.symptom,
+          title: symptom,
+          subtitle: 'Quick Diagnosis',
+          symptom: symptom,
+        ));
+      }
+    }
+    
+    // Search schematics (if model selected)
+    for (final schematic in _schematics) {
+      final fileName = schematic.path.split('/').last.toLowerCase();
+      final index = schematic.index?.toLowerCase() ?? '';
+      
+      if (fileName.contains(_searchQuery) || index.contains(_searchQuery)) {
+        results.add(_SearchResult(
+          type: _SearchResultType.schematic,
+          title: schematic.path.split('/').last,
+          subtitle: schematic.index ?? 'Schematic File',
+          schematicPath: schematic.path,
+        ));
+      }
+    }
+    
+    setState(() {
+      _searchResults = results.take(10).toList(); // Limit to 10 results
+      _showSearchResults = results.isNotEmpty;
+    });
+  }
+  
+  void _onSearchResultSelected(_SearchResult result) {
+    _searchController.clear();
+    _searchQuery = '';
+    _showSearchResults = false;
+    _searchFocusNode.unfocus();
+    
+    switch (result.type) {
+      case _SearchResultType.device:
+        setState(() {
+          _selectedManufacturer = result.manufacturer;
+          _selectedModel = result.model;
+        });
+        _loadFilesForModel();
+        break;
+      case _SearchResultType.symptom:
+        if (_selectedModel != null) {
+          _onSymptomSelected(result.symptom!);
+        } else if (_manufacturers.isNotEmpty) {
+          // Select first available device then trigger symptom
+          setState(() {
+            _selectedManufacturer = _manufacturers.first.name;
+            _selectedModel = _manufacturers.first.models.first;
+          });
+          _loadFilesForModel().then((_) {
+            _onSymptomSelected(result.symptom!);
+          });
+        }
+        break;
+      case _SearchResultType.schematic:
+        if (result.schematicPath != null) {
+          setState(() {
+            _selectedFilePath = result.schematicPath;
+            _selectedFileType = _determineFileType(result.schematicPath!);
+          });
+        }
+        break;
+    }
+  }
+  
+  /// Determine file type from path
+  _FileType _determineFileType(String path) {
+    final lowerPath = path.toLowerCase();
+    if (lowerPath.endsWith('.pdf')) return _FileType.pdf;
+    if (lowerPath.endsWith('.brd')) return _FileType.pcb;
+    if (lowerPath.endsWith('.md') || lowerPath.endsWith('.txt')) return _FileType.md;
+    if (lowerPath.endsWith('.png') || lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.gif')) return _FileType.image;
+    if (lowerPath.contains('/boardview/') || lowerPath.endsWith('.bdv')) return _FileType.boardview;
+    return _FileType.md;
+  }
+
+  // Load files when model is first selected
 
   static const String _cacheKey = 'manufacturers_cache';
   
@@ -601,7 +775,7 @@ class _DeviceRepairPageState extends ConsumerState<DeviceRepairPage>
     _scrollToBottom();
     
     try {
-      // Build context from current device schematics
+      // Build enhanced context from current device schematics
       String contextInfo = '';
       if (_selectedModel != null) {
         // Only include markdown and text files in AI context
@@ -609,28 +783,49 @@ class _DeviceRepairPageState extends ConsumerState<DeviceRepairPage>
             .where((s) => s.path.endsWith('.md') || s.path.endsWith('.txt'))
             .toList();
         
+        // Get PDF and boardview files for reference
+        final pdfFiles = _schematics.where((s) => s.path.endsWith('.pdf')).toList();
+        final boardviewFiles = _schematics.where((s) => s.path.contains('/boardview/')).toList();
+        
         contextInfo = '''
 Current Device Context:
 - Manufacturer: $_selectedManufacturer
 - Model: $_selectedModel
+${_selectedSymptom != null ? '- Active Symptom: $_selectedSymptom' : ''}
 
-Available Schematics (Markdown/Txt only):
-${markdownFiles.map((s) => '- ${s.path}: ${s.index ?? ""}').join('\n')}
+Available Documentation:
+${markdownFiles.isNotEmpty ? 'Markdown Files:\n${markdownFiles.map((s) => '- ${s.path}: ${s.index ?? ""}').join('\n')}' : 'No markdown files available'}
+
+${pdfFiles.isNotEmpty ? 'PDF Schematics: ${pdfFiles.length} files available' : ''}
+${boardviewFiles.isNotEmpty ? 'BoardView Files: ${boardviewFiles.length} files available' : ''}
 ''';
         
         if (_schematicContent != null && _schematicContent!.isNotEmpty) {
-          contextInfo += '\nCurrent Schematic Content:\n$_schematicContent';
+          // Include relevant portion of schematic content (limit to avoid token limits)
+          final contentPreview = _schematicContent!.length > 3000 
+              ? '${_schematicContent!.substring(0, 3000)}...\n[Content truncated for analysis]'
+              : _schematicContent!;
+          contextInfo += '\nCurrent Schematic Content:\n$contentPreview';
         }
       }
 
       final aiService = ref.read(aiServiceProvider);
       final prompt = '''
-You are RepairAI, an AI assistant for mobile repair technicians.
+You are RepairAI, an expert mobile repair technician with 20 years of experience. You help technicians diagnose and repair mobile devices efficiently.
+
 $contextInfo
 
 User Question: $message
 
-Please provide a helpful, technical answer based on the schematic data above. If the question is about repair procedures, refer to the step-by-step guides available.
+Provide a comprehensive response that includes:
+1. **Direct Answer**: Address the specific question clearly
+2. **Technical Details**: Include relevant voltage values, component locations, or pinouts if applicable
+3. **Diagnostic Steps**: If troubleshooting, provide step-by-step measurement procedures
+4. **Common Issues**: Mention known failure patterns for this device/model if relevant
+5. **Safety Notes**: Any precautions the technician should take
+
+Be concise but thorough. Use bullet points and numbered lists for clarity.
+If the question is outside mobile repair scope, politely redirect to repair-related topics.
 ''';
 
       final response = await aiService.sendMessage(prompt);
@@ -671,6 +866,110 @@ Please provide a helpful, technical answer based on the schematic data above. If
       }
     });
   }
+  
+  /// Handle symptom selection - triggers AI analysis with repair context
+  Future<void> _onSymptomSelected(String symptom) async {
+    if (_selectedModel == null) return;
+    
+    setState(() {
+      _selectedSymptom = symptom;
+      _isAnalyzingSymptom = true;
+    });
+    
+    // Switch to Chat tab to show analysis
+    _tabController.animateTo(1);
+    
+    // Add user message about symptom
+    setState(() {
+      _messages.add(ChatMessage(
+        role: 'user',
+        content: '🔍 Quick Diagnosis: $symptom',
+        timestamp: DateTime.now(),
+      ));
+    });
+    
+    _scrollToBottom();
+    
+    try {
+      // Build enhanced context for symptom-based diagnosis
+      final relatedComponents = _symptomComponents[symptom] ?? [];
+      final markdownFiles = _schematics
+          .where((s) => s.path.endsWith('.md') || s.path.endsWith('.txt'))
+          .toList();
+      
+      String contextInfo = '''
+Current Device Context:
+- Manufacturer: $_selectedManufacturer
+- Model: $_selectedModel
+- Reported Symptom: $symptom
+
+Likely Related Components:
+${relatedComponents.map((c) => '- $c').join('\n')}
+
+Available Schematics:
+${markdownFiles.map((s) => '- ${s.path}: ${s.index ?? ""}').join('\n')}
+''';
+
+      if (_schematicContent != null && _schematicContent!.isNotEmpty) {
+        contextInfo += '\nCurrent Schematic Content:\n$_schematicContent';
+      }
+
+      final aiService = ref.read(aiServiceProvider);
+      final prompt = '''
+You are RepairAI, an expert mobile repair technician with 20 years of experience.
+
+$contextInfo
+
+The user has selected the symptom: "$symptom"
+
+Provide a comprehensive diagnosis:
+1. **Most Likely Faulty Components** (ranked by probability):
+   - List the most probable failing components
+   - Explain why each could cause this symptom
+
+2. **Test Points to Check**:
+   - Specific voltage measurements to take
+   - Expected values vs. faulty values
+   - Which pins/pads to probe
+
+3. **Step-by-Step Repair Procedure**:
+   - Disassembly notes if relevant
+   - Component location on board
+   - Replacement procedure
+
+4. **Common Pitfalls to Avoid**:
+   - Mistakes technicians often make with this issue
+   - Related components that could be damaged
+
+Be specific to the $_selectedManufacturer $_selectedModel if information is available.
+''';
+
+      final response = await aiService.sendMessage(prompt);
+      
+      if (!mounted) return;
+      setState(() {
+        _messages.add(ChatMessage(
+          role: 'assistant',
+          content: response,
+          timestamp: DateTime.now(),
+        ));
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(ChatMessage(
+          role: 'assistant',
+          content: 'Error analyzing symptom: ${e.toString()}',
+          timestamp: DateTime.now(),
+        ));
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isAnalyzingSymptom = false);
+        _scrollToBottom();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -692,16 +991,28 @@ Please provide a helpful, technical answer based on the schematic data above. If
                 ),
         ),
         child: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              // Device Selector with Glass effect
-              GlassCard(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                borderRadius: BorderRadius.circular(20),
+              Column(
+                children: [
+                  // Device Selector with Glass effect
+                  GlassCard(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    borderRadius: BorderRadius.circular(20),
                 opacity: isDark ? 0.15 : 0.25,
                 child: _buildDeviceSelector(isDark),
               ),
+              
+              // Quick Diagnosis Card - Symptom-based navigation
+              if (_selectedModel != null)
+                GlassCard(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.all(12),
+                  borderRadius: BorderRadius.circular(16),
+                  opacity: isDark ? 0.12 : 0.2,
+                  child: _buildQuickDiagnosisCard(isDark),
+                ),
               
               // Tab Bar with Glass effect
               GlassCard(
@@ -736,9 +1047,9 @@ Please provide a helpful, technical answer based on the schematic data above. If
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.folder_outlined, size: 20),
+                            Icon(Icons.flash_on, size: 20),
                             SizedBox(width: 8),
-                            Text('Files'),
+                            Text('Diagnosis'),
                           ],
                         ),
                       ),
@@ -746,9 +1057,19 @@ Please provide a helpful, technical answer based on the schematic data above. If
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.smart_toy_outlined, size: 20),
+                            Icon(Icons.build_outlined, size: 20),
                             SizedBox(width: 8),
-                            Text('Chat'),
+                            Text('Repair'),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.menu_book_outlined, size: 20),
+                            SizedBox(width: 8),
+                            Text('Reference'),
                           ],
                         ),
                       ),
@@ -767,148 +1088,933 @@ Please provide a helpful, technical answer based on the schematic data above. If
                   child: TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildFilesTab(isDark),
-                      _buildChatTab(isDark),
+                      _buildDiagnosisTab(isDark),
+                      _buildRepairTab(isDark),
+                      _buildReferenceTab(isDark),
                     ],
                   ),
                 ),
               ),
             ],
           ),
+          
+          // Quick Actions Panel - Floating Action Buttons
+          _buildQuickActionsPanel(isDark),
+        ],
+      ),
+    ),
+    ),
+  );
+}
+  
+  /// Quick Actions Panel - Floating action buttons for common tasks
+  Widget _buildQuickActionsPanel(bool isDark) {
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Measure Button
+          _buildQuickActionButton(
+            icon: Icons.straighten,
+            label: 'Measure',
+            color: Colors.green,
+            isDark: isDark,
+            onTap: () => _tabController.animateTo(2), // Go to Reference tab
+          ),
+          const SizedBox(height: 8),
+          
+          // Find Component Button
+          _buildQuickActionButton(
+            icon: Icons.search,
+            label: 'Find',
+            color: Colors.blue,
+            isDark: isDark,
+            onTap: () {
+              _searchFocusNode.requestFocus();
+            },
+          ),
+          const SizedBox(height: 8),
+          
+          // Checklist Button
+          _buildQuickActionButton(
+            icon: Icons.checklist,
+            label: 'Checklist',
+            color: Colors.orange,
+            isDark: isDark,
+            onTap: () => _showChecklistDialog(isDark),
+          ),
+          const SizedBox(height: 8),
+          
+          // Main FAB
+          Container(
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withOpacity(0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: FloatingActionButton(
+              onPressed: () => _showQuickActionsMenu(isDark),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              child: const Icon(Icons.apps, color: Colors.white, size: 28),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black87,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  void _showQuickActionsMenu(bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Quick Actions',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildQuickActionItem(
+                  icon: Icons.straighten,
+                  label: 'Measure',
+                  color: Colors.green,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _tabController.animateTo(2);
+                  },
+                ),
+                _buildQuickActionItem(
+                  icon: Icons.search,
+                  label: 'Find',
+                  color: Colors.blue,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _searchFocusNode.requestFocus();
+                  },
+                ),
+                _buildQuickActionItem(
+                  icon: Icons.checklist,
+                  label: 'Checklist',
+                  color: Colors.orange,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showChecklistDialog(isDark);
+                  },
+                ),
+                _buildQuickActionItem(
+                  icon: Icons.compare,
+                  label: 'Compare',
+                  color: Colors.purple,
+                  isDark: isDark,
+                  onTap: () {
+                    Navigator.pop(context);
+                    // TODO: Implement compare feature
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildQuickActionItem({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.white70 : Colors.black87,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _showChecklistDialog(bool isDark) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+        title: Row(
+          children: [
+            Icon(Icons.checklist, color: Colors.orange.shade600),
+            const SizedBox(width: 12),
+            const Text('Diagnostic Checklist'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildChecklistItem('Check battery voltage (3.7V-4.4V)', isDark),
+            _buildChecklistItem('Inspect for visible damage', isDark),
+            _buildChecklistItem('Check all connectors', isDark),
+            _buildChecklistItem('Test with known-good battery', isDark),
+            _buildChecklistItem('Check for short circuits', isDark),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildChecklistItem(String text, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_box_outline_blank,
+            color: isDark ? Colors.white54 : Colors.black54,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildDeviceSelector(bool isDark) {
-    return Row(
+    return Column(
       children: [
-        // Manufacturer dropdown
-        Expanded(
-          child: _manufacturers.isEmpty
-              ? Center(
-                  child: Text(
-                    'Loading devices...',
-                    style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
-                  ),
-                )
-              : Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                  ),
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedManufacturer,
-                    dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                    decoration: InputDecoration(
-                      labelText: 'Manufacturer',
-                      labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.primary, width: 2),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      prefixIcon: Icon(Icons.phone_android, color: isDark ? Colors.white70 : Colors.black54),
-                    ),
-                    items: _manufacturers.map((m) {
-                      return DropdownMenuItem(
-                        value: m.name,
-                        child: Text(
-                          m.name.toUpperCase(),
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedManufacturer = value;
-                        final manu = _manufacturers.firstWhere((m) => m.name == value);
-                        _selectedModel = manu.models.first;
-                        _loadFilesForModel();
-                      });
-                    },
-                  ),
+        // Unified Search Bar
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
                 ),
-        ),
-        const SizedBox(width: 12),
-        
-        // Model dropdown
-        Expanded(
-          child: _manufacturers.isEmpty
-              ? const SizedBox()
-              : Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 15,
                   ),
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedModel,
-                    dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                    decoration: InputDecoration(
-                      labelText: 'Model',
-                      labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.accent, width: 2),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      prefixIcon: Icon(Icons.model_training, color: isDark ? Colors.white70 : Colors.black54),
+                  decoration: InputDecoration(
+                    hintText: 'Search device, symptom, or file...',
+                    hintStyle: TextStyle(
+                      color: isDark ? Colors.white54 : Colors.black45,
                     ),
-                    items: _manufacturers.isNotEmpty
-                        ? _manufacturers
-                            .firstWhere((m) => m.name == _selectedManufacturer, 
-                                orElse: () => _manufacturers.first)
-                            .models
-                            .map((m) {
-                          return DropdownMenuItem(
-                            value: m,
-                            child: Text(
-                              m.toUpperCase(),
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white : Colors.black87,
-                              ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      color: isDark ? Colors.white54 : Colors.black45,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.clear,
+                              color: isDark ? Colors.white54 : Colors.black45,
+                              size: 20,
                             ),
-                          );
-                        }).toList()
-                        : [],
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedModel = value;
-                        _loadFilesForModel();
-                      });
-                    },
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                                _showSearchResults = false;
+                              });
+                            },
+                          )
+                        : null,
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Refresh button
+            GradientIconButton(
+              icon: Icons.refresh,
+              onPressed: _loadManufacturers,
+              size: 48,
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
         
-        // Refresh button with gradient
-        GradientIconButton(
-          icon: Icons.refresh,
-          onPressed: _loadManufacturers,
-          size: 48,
+        // Search Results Dropdown
+        if (_showSearchResults && _searchResults.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            constraints: const BoxConstraints(maxHeight: 300),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _searchResults.length,
+              itemBuilder: (context, index) {
+                final result = _searchResults[index];
+                return _buildSearchResultItem(result, isDark);
+              },
+            ),
+          ),
+        
+        // Current Selection Display
+        if (_selectedModel != null && !_showSearchResults)
+          Container(
+            margin: const EdgeInsets.only(top: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.phone_android, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Text(
+                  '$_selectedManufacturer $_selectedModel',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.white.withOpacity(0.8),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+  
+  Widget _buildSearchResultItem(_SearchResult result, bool isDark) {
+    IconData icon;
+    Color color;
+    
+    switch (result.type) {
+      case _SearchResultType.device:
+        icon = Icons.phone_android;
+        color = Colors.blue;
+        break;
+      case _SearchResultType.symptom:
+        icon = Icons.flash_on;
+        color = Colors.orange;
+        break;
+      case _SearchResultType.schematic:
+        icon = Icons.description;
+        color = Colors.green;
+        break;
+    }
+    
+    return InkWell(
+      onTap: () => _onSearchResultSelected(result),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isDark ? Colors.white10 : Colors.black12,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    result.title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    result.subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDark ? Colors.white54 : Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_forward_ios,
+              size: 14,
+              color: isDark ? Colors.white38 : Colors.black38,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Quick Diagnosis Card - Symptom-based navigation for instant repair guidance
+  Widget _buildQuickDiagnosisCard(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.flash_on, color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Quick Diagnosis',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+            const Spacer(),
+            if (_isAnalyzingSymptom)
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: isDark ? AppColors.primaryLight : AppColors.primary,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Select a symptom for instant AI-powered diagnosis:',
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.white60 : Colors.black54,
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Symptom chips
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _commonSymptoms.map((symptom) {
+            final isSelected = _selectedSymptom == symptom;
+            return GestureDetector(
+              onTap: _isAnalyzingSymptom ? null : () => _onSymptomSelected(symptom),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: isSelected ? AppColors.primaryGradient : null,
+                  color: isSelected 
+                      ? null 
+                      : (isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected 
+                        ? Colors.transparent 
+                        : (isDark ? Colors.white24 : Colors.black12),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _getSymptomIcon(symptom),
+                      size: 16,
+                      color: isSelected 
+                          ? Colors.white 
+                          : (isDark ? Colors.white70 : Colors.black54),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      symptom,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected 
+                            ? Colors.white 
+                            : (isDark ? Colors.white70 : Colors.black87),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
         ),
       ],
+    );
+  }
+  
+  /// Get icon for each symptom type
+  IconData _getSymptomIcon(String symptom) {
+    switch (symptom) {
+      case "Won't turn on":
+        return Icons.power_off;
+      case "No display":
+        return Icons.visibility_off;
+      case "Not charging":
+        return Icons.battery_alert;
+      case "No sound":
+        return Icons.volume_off;
+      case "WiFi/Bluetooth issues":
+        return Icons.wifi_off;
+      case "Camera not working":
+        return Icons.camera_alt_outlined;
+      case "Overheating":
+        return Icons.thermostat;
+      case "No SIM detected":
+        return Icons.sim_card_alert;
+      case "Touch not working":
+        return Icons.touch_app_outlined;
+      case "Battery drain":
+        return Icons.battery_saver;
+      default:
+        return Icons.build;
+    }
+  }
+  
+  /// Diagnosis Tab - Symptoms + AI Chat
+  Widget _buildDiagnosisTab(bool isDark) {
+    return Column(
+      children: [
+        // Symptom Quick Select
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white10 : Colors.black.withOpacity(0.03),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Quick Diagnosis',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _commonSymptoms.take(6).map((symptom) {
+                  return GestureDetector(
+                    onTap: _isAnalyzingSymptom ? null : () => _onSymptomSelected(symptom),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: isDark ? Colors.white24 : Colors.black12,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getSymptomIcon(symptom),
+                            size: 14,
+                            color: isDark ? Colors.white70 : Colors.black54,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            symptom,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.white70 : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+        
+        // Chat Messages
+        Expanded(
+          child: _buildChatTab(isDark),
+        ),
+      ],
+    );
+  }
+  
+  /// Repair Tab - Files + Schematics
+  Widget _buildRepairTab(bool isDark) {
+    return _buildFilesTab(isDark);
+  }
+  
+  /// Reference Tab - Quick Reference Cards + Component Info
+  Widget _buildReferenceTab(bool isDark) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Quick Reference Card
+          _buildQuickReferenceCard(isDark),
+          const SizedBox(height: 24),
+          
+          // Multimeter Reference
+          _buildMultimeterReference(isDark),
+          const SizedBox(height: 24),
+          
+          // Common Components Reference
+          _buildCommonComponentsReference(isDark),
+        ],
+      ),
+    );
+  }
+  
+  /// Multimeter Reference Card
+  Widget _buildMultimeterReference(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.black12,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.green.shade600,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.electrical_services, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                const Text(
+                  'Multimeter Reference',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                _buildVoltageRow('V_BAT (Battery)', '3.7V - 4.4V', 'Main battery voltage', isDark),
+                _buildVoltageRow('V_SYS (System)', '3.8V - 4.5V', 'System power rail', isDark),
+                _buildVoltageRow('V_IO (I/O)', '1.8V / 3.3V', 'GPIO logic level', isDark),
+                _buildVoltageRow('5V_BOOST', '5.0V ±0.2V', 'USB/OTG power', isDark),
+                _buildVoltageRow('1.8V_ALWAYS', '1.8V', 'Always-on rail', isDark),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildVoltageRow(String name, String value, String description, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              name,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.green.shade100,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Colors.green.shade700,
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              description,
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.white54 : Colors.black54,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  /// Common Components Reference
+  Widget _buildCommonComponentsReference(bool isDark) {
+    final components = [
+      {'name': 'PMIC', 'full': 'Power Management IC', 'function': 'Power distribution, charging'},
+      {'name': 'AP', 'full': 'Application Processor', 'function': 'Main CPU/GPU'},
+      {'name': 'BP', 'full': 'Baseband Processor', 'function': 'Cellular connectivity'},
+      {'name': 'WLAN', 'full': 'WiFi/Bluetooth Module', 'function': 'Wireless connectivity'},
+      {'name': 'Audio IC', 'full': 'Audio Codec', 'function': 'Sound processing'},
+      {'name': 'Touch IC', 'full': 'Touch Controller', 'function': 'Touch input'},
+    ];
+    
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.black12,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.purple.shade600,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.memory, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                const Text(
+                  'Common Components',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: components.map((c) => Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.03),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c['name']!,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      c['full']!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDark ? Colors.white54 : Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      c['function']!,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.purple.shade400,
+                      ),
+                    ),
+                  ],
+                ),
+              )).toList(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1126,6 +2232,10 @@ Please provide a helpful, technical answer based on the schematic data above. If
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Quick Reference Card - At-a-glance device info
+        _buildQuickReferenceCard(isDark),
+        const SizedBox(height: 24),
+        
         if (mdFiles.isNotEmpty) ...[
           _buildSectionHeader('Documentation', Icons.description, isDark),
           ...mdFiles.map((file) => _buildFileCard(isDark, file, (f) => setState(() { _selectedFilePath = f.path; _selectedFileType = f.fileType; }))),
@@ -1152,6 +2262,253 @@ Please provide a helpful, technical answer based on the schematic data above. If
         ],
       ],
     );
+  }
+  
+  /// Quick Reference Card - At-a-glance device information
+  Widget _buildQuickReferenceCard(bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: isDark 
+            ? LinearGradient(
+                colors: [const Color(0xFF1E293B), const Color(0xFF0F172A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : LinearGradient(
+                colors: [Colors.white, const Color(0xFFF8FAFC)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? Colors.white12 : Colors.black12,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isDark ? Colors.black : Colors.grey).withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Quick Reference - $_selectedModel',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _selectedManufacturer?.toUpperCase() ?? '',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Content Grid
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Row 1: Common ICs and Voltage Values
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildReferenceItem(
+                        isDark,
+                        icon: Icons.memory,
+                        title: 'Common ICs',
+                        items: _getCommonICs(),
+                        color: Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildReferenceItem(
+                        isDark,
+                        icon: Icons.electrical_services,
+                        title: 'Key Voltages',
+                        items: _getKeyVoltages(),
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                
+                // Row 2: Screw Locations and Disassembly
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildReferenceItem(
+                        isDark,
+                        icon: Icons.build,
+                        title: 'Screw Types',
+                        items: _getScrewTypes(),
+                        color: Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildReferenceItem(
+                        isDark,
+                        icon: Icons.timer_outlined,
+                        title: 'Repair Time',
+                        items: _getRepairEstimates(),
+                        color: Colors.purple,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildReferenceItem(bool isDark, {
+    required IconData icon,
+    required String title,
+    required List<String> items,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...items.map((item) => Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    item,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.white70 : Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+  
+  /// Get common ICs for the selected model
+  List<String> _getCommonICs() {
+    // This could be expanded to load from a database per model
+    if (_selectedModel == null) return ['Select a model'];
+    
+    // Default common ICs for most smartphones
+    return [
+      'PMIC (Power Management)',
+      'Charging IC',
+      'Audio Codec',
+      'WiFi/Bluetooth Module',
+    ];
+  }
+  
+  /// Get key voltage test points
+  List<String> _getKeyVoltages() {
+    if (_selectedModel == null) return ['Select a model'];
+    
+    return [
+      'V_BAT: 3.7V - 4.4V',
+      'V_SYS: 3.8V - 4.5V',
+      'V_IO: 1.8V / 3.3V',
+      '5V_BOOST: 5.0V',
+    ];
+  }
+  
+  /// Get screw types for the device
+  List<String> _getScrewTypes() {
+    if (_selectedModel == null) return ['Select a model'];
+    
+    return [
+      'Display: 2.5mm Phillips',
+      'Battery: 2.0mm Phillips',
+      'Motherboard: 1.5mm Y-type',
+      'Shield: 1.2mm Torx',
+    ];
+  }
+  
+  /// Get repair time estimates
+  List<String> _getRepairEstimates() {
+    if (_selectedModel == null) return ['Select a model'];
+    
+    return [
+      'Screen: 30-45 min',
+      'Battery: 20-30 min',
+      'Charging Port: 45-60 min',
+      'Full Disassembly: 60-90 min',
+    ];
   }
 
   Widget _buildSectionHeader(String title, IconData icon, bool isDark) {
@@ -1225,6 +2582,12 @@ Please provide a helpful, technical answer based on the schematic data above. If
                 const SizedBox(height: 16),
                 Text('Error loading file', style: TextStyle(color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight)),
                 Text(snapshot.error.toString(), style: TextStyle(color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight, fontSize: 12)),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Go Back'),
+                  onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }),
+                ),
               ],
             ),
           );
@@ -1241,6 +2604,12 @@ Please provide a helpful, technical answer based on the schematic data above. If
               ),
               child: Row(
                 children: [
+                  IconButton(
+                    icon: Icon(Icons.arrow_back, color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                    onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }),
+                    tooltip: 'Go back',
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(child: Text(url.split('/').last, style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight), overflow: TextOverflow.ellipsis)),
                 ],
               ),
@@ -1282,6 +2651,12 @@ Please provide a helpful, technical answer based on the schematic data above. If
           ),
           child: Row(
             children: [
+              IconButton(
+                icon: Icon(Icons.arrow_back, color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight),
+                onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }),
+                tooltip: 'Go back',
+              ),
+              const SizedBox(width: 8),
               Expanded(child: Text(url.split('/').last, style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight), overflow: TextOverflow.ellipsis)),
             ],
           ),
@@ -1357,31 +2732,34 @@ Please provide a helpful, technical answer based on the schematic data above. If
         Expanded(
           child: _messages.isEmpty
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.smart_toy,
-                        size: 48,
-                        color: isDark ? AppColors.primaryLight : AppColors.primary,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Ask about repairs for $_selectedModel',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.smart_toy,
+                          size: 48,
+                          color: isDark ? AppColors.primaryLight : AppColors.primary,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'AI will use the schematic data as context',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                        const SizedBox(height: 16),
+                        Text(
+                          'Ask about repairs for $_selectedModel',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          'AI will use the schematic data as context',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : ListView.builder(
@@ -1499,4 +2877,28 @@ class _FileItem {
   final _FileType fileType;
 
   _FileItem({required this.name, required this.path, required this.fileType});
+}
+
+/// Search result type enum
+enum _SearchResultType { device, symptom, schematic }
+
+/// Search result model for unified search
+class _SearchResult {
+  final _SearchResultType type;
+  final String title;
+  final String subtitle;
+  final String? manufacturer;
+  final String? model;
+  final String? symptom;
+  final String? schematicPath;
+
+  _SearchResult({
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    this.manufacturer,
+    this.model,
+    this.symptom,
+    this.schematicPath,
+  });
 }
