@@ -69,5 +69,45 @@
   "cacheCleared": "کش پاک شد",
   "defaultModel": "مدل پیش‌فرض هوش مصنوعی",
   "english": "انگلیسی",
-  "persian": "فارسی"
+  "persian": "فارسی",
+  "submitContribution": "ارسال مشارکت",
+  "@submitContribution": {
+    "description": "Button to submit a contribution"
+  },
+  "shareContent": "به اشتراک گذاری شماتیک، راه‌حل یا ایده با جامعه",
+  "@shareContent": {
+    "description": "Description for contribution submission"
+  },
+  "forkTheRepository": "Fork کردن ریپازیتوری",
+  "@forkTheRepository": {
+    "description": "Step 1: Fork the repository"
+  },
+  "addYourContent": "اضافه کردن محتوای خودتان",
+  "@addYourContent": {
+    "description": "Step 2: Add your content"
+  },
+  "submitPullRequestStep": "ارسال Pull Request",
+  "@submitPullRequestStep": {
+    "description": "Step 3: Submit pull request"
+  },
+  "viewRepository": "مشاهده ریپازیتوری",
+  "@viewRepository": {
+    "description": "View GitHub repository"
+  },
+  "joinDiscord": "پیوستن به دیسکورد",
+  "@joinDiscord": {
+    "description": "Join Discord community"
+  },
+  "preferNotToCode": "کد نمی‌زنید؟",
+  "@preferNotToCode": {
+    "description": "Alternative submission option title"
+  },
+  "madeWithLove": "ساخته شده با عشق",
+  "@madeWithLove": {
+    "description": "Made with love attribution"
+  },
+  "howItWorks": "چگونه کار می‌کند",
+  "@howItWorks": {
+    "description": "Section title for how it works"
+  }
 }

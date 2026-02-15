@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/services/github_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../widgets/interactive_boardview_viewer.dart';
+import '../../data/models/boardview_model.dart';
+import '../../data/providers/boardview_providers.dart';
 import 'dart:ui';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 /// Glassmorphism Container - Modern frosted glass effect
 class GlassCard extends StatelessWidget {
@@ -404,40 +409,64 @@ class _SchematicPageState extends ConsumerState<SchematicPage> {
   }
 
   void _openSchematic(IndexEntry schematic) {
-    final github = ref.read(githubServiceProvider);
-    final url = github.getRawFileUrl(schematic.path);
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => SchematicDetailPage(
-          title: _getFileName(schematic.path),
-          url: url,
+    // Extract manufacturer and model from path
+    // Expected format: manufacturer/model/boardview/boardview.json
+    final pathParts = schematic.path.split('/');
+    if (pathParts.length >= 2) {
+      final manufacturer = pathParts[0];
+      final model = pathParts[1];
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SchematicDetailPage(
+            manufacturer: manufacturer,
+            model: model,
+            title: _getFileName(schematic.path),
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      // Fallback to URL-based loading
+      final github = ref.read(githubServiceProvider);
+      final url = github.getRawFileUrl(schematic.path);
+      
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SchematicDetailPage(
+            title: _getFileName(schematic.path),
+            url: url,
+          ),
+        ),
+      );
+    }
   }
 }
 
 /// Schematic detail page with interactive viewer
-class SchematicDetailPage extends StatefulWidget {
+class SchematicDetailPage extends ConsumerStatefulWidget {
   final String title;
-  final String url;
+  final String? url;
+  final String? manufacturer;
+  final String? model;
 
   const SchematicDetailPage({
     super.key,
     required this.title,
-    required this.url,
+    this.url,
+    this.manufacturer,
+    this.model,
   });
 
   @override
-  State<SchematicDetailPage> createState() => _SchematicDetailPageState();
+  ConsumerState<SchematicDetailPage> createState() => _SchematicDetailPageState();
 }
 
-class _SchematicDetailPageState extends State<SchematicDetailPage> {
+class _SchematicDetailPageState extends ConsumerState<SchematicDetailPage> {
   bool _isLoading = true;
   String? _error;
-  // BoardViewData? _boardData; // Uncomment when model is ready
+  BoardViewData? _boardData;
 
   @override
   void initState() {
@@ -446,27 +475,47 @@ class _SchematicDetailPageState extends State<SchematicDetailPage> {
   }
 
   Future<void> _loadBoardView() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     
     try {
-      // TODO: Load boardview data from URL
-      // final response = await http.get(Uri.parse(widget.url));
-      // final data = json.decode(response.body);
-      // _boardData = BoardViewData.fromJson(data);
+      BoardViewData data;
       
-      await Future.delayed(const Duration(seconds: 1)); // Simulate loading
+      // Try loading from manufacturer/model first
+      if (widget.manufacturer != null && widget.model != null) {
+        final params = BoardViewParams(
+          manufacturer: widget.manufacturer!,
+          model: widget.model!,
+        );
+        
+        final asyncValue = await ref.read(boardViewDataProvider(params).future);
+        data = asyncValue;
+      } else if (widget.url != null) {
+        // Fallback to URL-based loading
+        final response = await http.get(Uri.parse(widget.url!));
+        if (response.statusCode == 200) {
+          final json = jsonDecode(response.body) as Map<String, dynamic>;
+          data = BoardViewData.fromJson(json);
+        } else {
+          throw Exception('Failed to load boardview: ${response.statusCode}');
+        }
+      } else {
+        throw Exception('No data source provided');
+      }
       
       if (mounted) {
         setState(() {
+          _boardData = data;
           _isLoading = false;
-          _error = 'Interactive viewer coming soon!';
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _error = 'Error loading schematic: $e';
+          _error = e.toString();
         });
       }
     }
@@ -537,13 +586,14 @@ class _SchematicDetailPageState extends State<SchematicDetailPage> {
                       )
                     : _error != null
                         ? _buildErrorState(isDark)
-                        : _buildPlaceholder(isDark),
-                        // : InteractiveBoardViewViewer(
-                        //     boardData: _boardData!,
-                        //     onComponentTap: (component) {
-                        //       // Show component details
-                        //     },
-                        //   ),
+                        : _boardData != null
+                            ? InteractiveBoardViewViewer(
+                                boardData: _boardData!,
+                                onComponentTap: (component) {
+                                  _showComponentDetails(component);
+                                },
+                              )
+                            : _buildPlaceholder(isDark),
               ),
             ],
           ),
@@ -696,6 +746,209 @@ class _SchematicDetailPageState extends State<SchematicDetailPage> {
               // Navigate to contribution page
             },
             child: const Text('Contribute'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showComponentDetails(Component component) {
+    final service = ref.read(boardViewServiceProvider);
+    final nets = service.getComponentNets(_boardData!, component);
+    final pins = service.getComponentPins(_boardData!, component);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return GlassCard(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: ListView(
+                  controller: scrollController,
+                  children: [
+                    // Handle
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white24 : Colors.black12,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    
+                    // Component header
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Colors.blue, Colors.indigo],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.memory,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                component.ref,
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                                ),
+                              ),
+                              if (component.value != null)
+                                Text(
+                                  component.value!,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    // Component details
+                    _buildDetailRow('Type', component.type, isDark),
+                    if (component.package != null)
+                      _buildDetailRow('Package', component.package!, isDark),
+                    _buildDetailRow('Position', '${component.x.toStringAsFixed(2)}, ${component.y.toStringAsFixed(2)}', isDark),
+                    _buildDetailRow('Side', component.side, isDark),
+                    if (component.rotation != 0)
+                      _buildDetailRow('Rotation', '${component.rotation}°', isDark),
+                    if (component.description != null)
+                      _buildDetailRow('Description', component.description!, isDark),
+                    
+                    // Pins
+                    if (pins.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Pins (${pins.length})',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...pins.take(10).map((pin) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                pin.number,
+                                style: const TextStyle(fontSize: 12),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                pin.net,
+                                style: TextStyle(
+                                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
+                      if (pins.length > 10)
+                        Text(
+                          '... and ${pins.length - 10} more pins',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                          ),
+                        ),
+                    ],
+                    
+                    // Connected nets
+                    if (nets.isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        'Connected Nets',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: nets.map((net) => Chip(
+                          label: Text(net.name),
+                          backgroundColor: Colors.blue.withOpacity(0.2),
+                        )).toList(),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+              ),
+            ),
           ),
         ],
       ),

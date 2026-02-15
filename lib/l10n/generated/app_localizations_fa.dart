@@ -220,4 +220,34 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String get persian => 'فارسی';
+
+  @override
+  String get submitContribution => 'ارسال مشارکت';
+
+  @override
+  String get shareContent => 'به اشتراک گذاری شماتیک، راه‌حل یا ایده با جامعه';
+
+  @override
+  String get forkTheRepository => 'Fork کردن ریپازیتوری';
+
+  @override
+  String get addYourContent => 'اضافه کردن محتوای خودتان';
+
+  @override
+  String get submitPullRequestStep => 'ارسال Pull Request';
+
+  @override
+  String get viewRepository => 'مشاهده ریپازیتوری';
+
+  @override
+  String get joinDiscord => 'پیوستن به دیسکورد';
+
+  @override
+  String get preferNotToCode => 'کد نمی‌زنید؟';
+
+  @override
+  String get madeWithLove => 'ساخته شده با عشق';
+
+  @override
+  String get howItWorks => 'چگونه کار می‌کند';
 }

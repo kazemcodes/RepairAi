@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'ai_service.dart';
@@ -78,9 +77,9 @@ class WebScraperService {
     } catch (e) {
       throw Exception('Web scraping error: $e');
     }
- /// Extract repair-related  }
+  }
   
-  content from HTML
+  /// Extract repair-related content from HTML
   String _extractRepairContent(String html, String url) {
     // Basic extraction - in production, use proper HTML parsing
     // Look for common repair-related patterns

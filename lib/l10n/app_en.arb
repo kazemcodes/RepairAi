@@ -72,5 +72,45 @@
   "cacheCleared": "Cache cleared",
   "defaultModel": "Default AI Model",
   "english": "English",
-  "persian": "Persian (Farsi)"
+  "persian": "Persian (Farsi)",
+  "submitContribution": "Submit Contribution",
+  "@submitContribution": {
+    "description": "Button to submit a contribution"
+  },
+  "shareContent": "Share schematics, solutions, or ideas with the community",
+  "@shareContent": {
+    "description": "Description for contribution submission"
+  },
+  "forkTheRepository": "Fork the Repository",
+  "@forkTheRepository": {
+    "description": "Step 1: Fork the repository"
+  },
+  "addYourContent": "Add Your Content",
+  "@addYourContent": {
+    "description": "Step 2: Add your content"
+  },
+  "submitPullRequestStep": "Submit a Pull Request",
+  "@submitPullRequestStep": {
+    "description": "Step 3: Submit pull request"
+  },
+  "viewRepository": "View Repository",
+  "@viewRepository": {
+    "description": "View GitHub repository"
+  },
+  "joinDiscord": "Join Discord",
+  "@joinDiscord": {
+    "description": "Join Discord community"
+  },
+  "preferNotToCode": "Prefer not to code?",
+  "@preferNotToCode": {
+    "description": "Alternative submission option title"
+  },
+  "madeWithLove": "Made with Love",
+  "@madeWithLove": {
+    "description": "Made with love attribution"
+  },
+  "howItWorks": "How It Works",
+  "@howItWorks": {
+    "description": "Section title for how it works"
+  }
 }

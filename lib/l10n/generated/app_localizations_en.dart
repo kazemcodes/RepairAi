@@ -221,4 +221,35 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get persian => 'Persian (Farsi)';
+
+  @override
+  String get submitContribution => 'Submit Contribution';
+
+  @override
+  String get shareContent =>
+      'Share schematics, solutions, or ideas with the community';
+
+  @override
+  String get forkTheRepository => 'Fork the Repository';
+
+  @override
+  String get addYourContent => 'Add Your Content';
+
+  @override
+  String get submitPullRequestStep => 'Submit a Pull Request';
+
+  @override
+  String get viewRepository => 'View Repository';
+
+  @override
+  String get joinDiscord => 'Join Discord';
+
+  @override
+  String get preferNotToCode => 'Prefer not to code?';
+
+  @override
+  String get madeWithLove => 'Made with Love';
+
+  @override
+  String get howItWorks => 'How It Works';
 }

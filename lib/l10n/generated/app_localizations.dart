@@ -517,6 +517,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Persian (Farsi)'**
   String get persian;
+
+  /// Button to submit a contribution
+  ///
+  /// In en, this message translates to:
+  /// **'Submit Contribution'**
+  String get submitContribution;
+
+  /// Description for contribution submission
+  ///
+  /// In en, this message translates to:
+  /// **'Share schematics, solutions, or ideas with the community'**
+  String get shareContent;
+
+  /// Step 1: Fork the repository
+  ///
+  /// In en, this message translates to:
+  /// **'Fork the Repository'**
+  String get forkTheRepository;
+
+  /// Step 2: Add your content
+  ///
+  /// In en, this message translates to:
+  /// **'Add Your Content'**
+  String get addYourContent;
+
+  /// Step 3: Submit pull request
+  ///
+  /// In en, this message translates to:
+  /// **'Submit a Pull Request'**
+  String get submitPullRequestStep;
+
+  /// View GitHub repository
+  ///
+  /// In en, this message translates to:
+  /// **'View Repository'**
+  String get viewRepository;
+
+  /// Join Discord community
+  ///
+  /// In en, this message translates to:
+  /// **'Join Discord'**
+  String get joinDiscord;
+
+  /// Alternative submission option title
+  ///
+  /// In en, this message translates to:
+  /// **'Prefer not to code?'**
+  String get preferNotToCode;
+
+  /// Made with love attribution
+  ///
+  /// In en, this message translates to:
+  /// **'Made with Love'**
+  String get madeWithLove;
+
+  /// Section title for how it works
+  ///
+  /// In en, this message translates to:
+  /// **'How It Works'**
+  String get howItWorks;
 }
 
 class _AppLocalizationsDelegate

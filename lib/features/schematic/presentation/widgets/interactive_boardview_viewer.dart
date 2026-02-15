@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../../data/models/boardview_model.dart';
 import 'dart:ui' as ui;
 
