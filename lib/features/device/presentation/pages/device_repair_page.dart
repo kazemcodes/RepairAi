@@ -1026,24 +1026,47 @@ Please provide a helpful, technical answer based on the schematic data above. If
     // Show file viewer if a file is selected
     if (_selectedFilePath != null) {
       if (_selectedFileType == _FileType.pdf) {
-        return Stack(
-          children: [
-            PdfViewerWidget(filePath: _selectedFilePath!, title: _selectedFilePath!.split(Platform.pathSeparator).last, isFromUrl: false),
-            Positioned(
-              top: 60, left: 8,
-              child: FloatingActionButton.small(onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }), child: const Icon(Icons.arrow_back)),
+        // Convert relative path to full GitHub URL
+        final github = ref.read(githubServiceProvider);
+        final url = github.getRawFileUrl(_selectedFilePath!);
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_selectedFilePath!.split('/').last),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }),
             ),
-          ],
+          ),
+          body: PdfViewerWidget(filePath: url, title: _selectedFilePath!.split('/').last, isFromUrl: true),
         );
       } else if (_selectedFileType == _FileType.pcb) {
-        return Stack(
-          children: [
-            BoardviewFileViewer(filePath: _selectedFilePath!, title: _selectedFilePath!.split(Platform.pathSeparator).last),
-            Positioned(
-              top: 60, left: 8,
-              child: FloatingActionButton.small(onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }), child: const Icon(Icons.arrow_back)),
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_selectedFilePath!.split('/').last),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }),
             ),
-          ],
+          ),
+          body: BoardviewFileViewer(filePath: _selectedFilePath!, title: _selectedFilePath!.split('/').last),
+        );
+      } else if (_selectedFileType == _FileType.md) {
+        // Show markdown content viewer
+        return _buildMarkdownViewer(_selectedFilePath!, isDark);
+      } else if (_selectedFileType == _FileType.image) {
+        // Show image viewer
+        return _buildImageViewer(_selectedFilePath!, isDark);
+      } else if (_selectedFileType == _FileType.boardview) {
+        // Show boardview viewer
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_selectedFilePath!.split('/').last),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => setState(() { _selectedFilePath = null; _selectedFileType = null; }),
+            ),
+          ),
+          body: BoardviewFileViewer(filePath: _selectedFilePath!, title: _selectedFilePath!.split('/').last),
         );
       }
     }
@@ -1059,11 +1082,15 @@ Please provide a helpful, technical answer based on the schematic data above. If
     // Helper to determine file type from path
     _FileType getFileType(String path) {
       final lowerPath = path.toLowerCase();
+      // Check PDF first
       if (lowerPath.endsWith('.pdf')) return _FileType.pdf;
-      if (lowerPath.endsWith('.md')) return _FileType.md;
-      if (lowerPath.endsWith('.txt')) return _FileType.md; // Treat .txt as markdown
-      if (lowerPath.endsWith('.png') || lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.gif')) return _FileType.image;
+      // Check PCB files
       if (lowerPath.endsWith('.brd')) return _FileType.pcb;
+      // Check markdown/text files
+      if (lowerPath.endsWith('.md') || lowerPath.endsWith('.txt')) return _FileType.md;
+      // Check images
+      if (lowerPath.endsWith('.png') || lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.gif')) return _FileType.image;
+      // Check boardview files
       if (lowerPath.contains('/boardview/') || lowerPath.endsWith('.bdv')) return _FileType.boardview;
       return _FileType.md; // Default
     }
@@ -1175,6 +1202,111 @@ Please provide a helpful, technical answer based on the schematic data above. If
         ),
       ),
     );
+  }
+
+  // Build markdown viewer for .md files from GitHub URL
+  Widget _buildMarkdownViewer(String path, bool isDark) {
+    // Convert relative path to full GitHub URL
+    final github = ref.read(githubServiceProvider);
+    final url = github.getRawFileUrl(path);
+    
+    return FutureBuilder<String>(
+      future: _fetchFileContent(url),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator(color: isDark ? AppColors.primaryLight : AppColors.primary));
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
+                const SizedBox(height: 16),
+                Text('Error loading file', style: TextStyle(color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight)),
+                Text(snapshot.error.toString(), style: TextStyle(color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight, fontSize: 12)),
+              ],
+            ),
+          );
+        }
+        final content = snapshot.data ?? '';
+        return Column(
+          children: [
+            Container(
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+                border: Border(bottom: BorderSide(color: isDark ? AppColors.borderDark : AppColors.borderLight)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: Text(url.split('/').last, style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight), overflow: TextOverflow.ellipsis)),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Markdown(
+                data: content,
+                styleSheet: MarkdownStyleSheet(
+                  p: TextStyle(color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight, fontSize: 14),
+                  h1: TextStyle(color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight, fontSize: 24, fontWeight: FontWeight.bold),
+                  h2: TextStyle(color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight, fontSize: 20, fontWeight: FontWeight.bold),
+                  h3: TextStyle(color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight, fontSize: 18, fontWeight: FontWeight.bold),
+                  code: TextStyle(fontFamily: 'monospace', backgroundColor: Colors.grey.shade800, color: Colors.white),
+                  codeblockDecoration: BoxDecoration(color: Colors.grey.shade800, borderRadius: BorderRadius.circular(4)),
+                  tableBorder: TableBorder.all(color: Colors.grey.shade600),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Build image viewer for image files from GitHub URL
+  Widget _buildImageViewer(String path, bool isDark) {
+    // Convert relative path to full GitHub URL
+    final github = ref.read(githubServiceProvider);
+    final url = github.getRawFileUrl(path);
+    
+    return Column(
+      children: [
+        Container(
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+            border: Border(bottom: BorderSide(color: isDark ? AppColors.borderDark : AppColors.borderLight)),
+          ),
+          child: Row(
+            children: [
+              Expanded(child: Text(url.split('/').last, style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight), overflow: TextOverflow.ellipsis)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Image.network(url, fit: BoxFit.contain, loadingBuilder: (context, child, loadingProgress) {
+              if (loadingProgress == null) return child;
+              return Center(child: CircularProgressIndicator(value: loadingProgress.expectedTotalBytes != null ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes! : null, color: isDark ? AppColors.primaryLight : AppColors.primary));
+            }, errorBuilder: (context, error, stack) => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.broken_image, size: 48, color: Colors.grey.shade400), const SizedBox(height: 8), Text('Failed to load image', style: TextStyle(color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight))]))),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Fetch file content from GitHub URL
+  Future<String> _fetchFileContent(String url) async {
+    final response = await http.get(Uri.parse(url));
+    if (response.statusCode == 200) {
+      return response.body;
+    }
+    throw Exception('Failed to load file: ${response.statusCode}');
   }
 
   Widget _buildSolutionsTab(bool isDark) {

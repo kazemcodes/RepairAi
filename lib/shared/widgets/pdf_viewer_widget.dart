@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import '../../core/theme/app_colors.dart';
 
 /// PDF Viewer Widget - displays PDF files with zoom, pan, and page navigation
+/// Uses Syncfusion PDF Viewer which supports all platforms including Windows
 class PdfViewerWidget extends StatefulWidget {
   final String filePath;
   final String? title;
@@ -23,17 +24,21 @@ class PdfViewerWidget extends StatefulWidget {
 }
 
 class _PdfViewerWidgetState extends State<PdfViewerWidget> {
+  final PdfViewerController _pdfController = PdfViewerController();
   int _currentPage = 0;
   int _totalPages = 0;
   bool _isReady = false;
   String _errorMessage = '';
-  PDFViewController? _pdfController;
+  String? _localPath;
 
   @override
   void initState() {
     super.initState();
     if (widget.isFromUrl) {
       _loadPdfFromUrl();
+    } else {
+      _localPath = widget.filePath;
+      _isReady = true;
     }
   }
 
@@ -42,14 +47,17 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
       final response = await http.get(Uri.parse(widget.filePath));
       if (response.statusCode == 200) {
         final dir = await getTemporaryDirectory();
-        final file = File('${dir.path}/temp_pdf.pdf');
+        final file = File('${dir.path}/temp_pdf_${DateTime.now().millisecondsSinceEpoch}.pdf');
         await file.writeAsBytes(response.bodyBytes);
         if (mounted) {
-          setState(() {});
+          setState(() {
+            _localPath = file.path;
+            _isReady = true;
+          });
         }
       } else {
         setState(() {
-          _errorMessage = 'Failed to download PDF';
+          _errorMessage = 'Failed to download PDF: ${response.statusCode}';
         });
       }
     } catch (e) {
@@ -57,6 +65,18 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         _errorMessage = 'Error loading PDF: $e';
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _pdfController.dispose();
+    // Clean up temp file
+    if (_localPath != null && _localPath!.contains('temp_pdf_')) {
+      try {
+        File(_localPath!).deleteSync();
+      } catch (_) {}
+    }
+    super.dispose();
   }
 
   @override
@@ -99,18 +119,6 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
       ),
       child: Row(
         children: [
-          // Back button
-          IconButton(
-            icon: Icon(
-              Icons.arrow_back,
-              color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
-            ),
-            onPressed: () => Navigator.of(context).pop(),
-            tooltip: 'Back',
-          ),
-          
-          const SizedBox(width: 8),
-          
           // Title
           Expanded(
             child: Text(
@@ -132,7 +140,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
                 color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               ),
               onPressed: _currentPage > 0
-                  ? () => _pdfController?.setPage(0)
+                  ? () => _pdfController.jumpToPage(1)
                   : null,
               tooltip: 'First page',
             ),
@@ -142,7 +150,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
                 color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               ),
               onPressed: _currentPage > 0
-                  ? () => _pdfController?.setPage(_currentPage - 1)
+                  ? () => _pdfController.previousPage()
                   : null,
               tooltip: 'Previous page',
             ),
@@ -151,8 +159,8 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
                 Icons.chevron_right,
                 color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               ),
-              onPressed: _currentPage < _totalPages - 1
-                  ? () => _pdfController?.setPage(_currentPage + 1)
+              onPressed: _currentPage < _totalPages
+                  ? () => _pdfController.nextPage()
                   : null,
               tooltip: 'Next page',
             ),
@@ -161,8 +169,8 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
                 Icons.last_page,
                 color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
               ),
-              onPressed: _currentPage < _totalPages - 1
-                  ? () => _pdfController?.setPage(_totalPages - 1)
+              onPressed: _currentPage < _totalPages
+                  ? () => _pdfController.jumpToPage(_totalPages)
                   : null,
               tooltip: 'Last page',
             ),
@@ -173,55 +181,24 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
   }
 
   Widget _buildPdfView(bool isDark) {
-    final path = widget.isFromUrl 
-        ? '${Directory.systemTemp.path}/temp_pdf.pdf'
-        : widget.filePath;
-    final file = File(path);
-    
-    if (!file.existsSync()) {
+    if (!_isReady || _localPath == null) {
       return _buildLoadingView(isDark);
     }
     
-    return Stack(
-      children: [
-        PDFView(
-          filePath: path,
-          enableSwipe: true,
-          swipeHorizontal: false,
-          autoSpacing: true,
-          pageFling: true,
-          pageSnap: true,
-          fitPolicy: FitPolicy.BOTH,
-          preventLinkNavigation: false,
-          onRender: (pages) {
-            setState(() {
-              _totalPages = pages ?? 0;
-              _isReady = true;
-            });
-          },
-          onError: (error) {
-            setState(() {
-              _errorMessage = error.toString();
-            });
-          },
-          onPageError: (page, error) {
-            setState(() {
-              _errorMessage = 'Error on page $page: $error';
-            });
-          },
-          onViewCreated: (PDFViewController controller) {
-            _pdfController = controller;
-          },
-          onPageChanged: (int? page, int? total) {
-            setState(() {
-              _currentPage = page ?? 0;
-              _totalPages = total ?? 0;
-            });
-          },
-        ),
-        if (!_isReady && _errorMessage.isEmpty)
-          _buildLoadingView(isDark),
-      ],
+    return SfPdfViewer.file(
+      File(_localPath!),
+      controller: _pdfController,
+      onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+        setState(() {
+          _totalPages = details.document.pages.count;
+          _isReady = true;
+        });
+      },
+      onPageChanged: (PdfPageChangedDetails details) {
+        setState(() {
+          _currentPage = details.newPageNumber;
+        });
+      },
     );
   }
 
@@ -293,7 +270,7 @@ class _PdfViewerWidgetState extends State<PdfViewerWidget> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            'Page ${_currentPage + 1} of $_totalPages',
+            'Page $_currentPage of $_totalPages',
             style: TextStyle(
               color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
             ),
