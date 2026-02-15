@@ -1,0 +1,256 @@
+name: Build Windows App
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (release or debug)'
+        required: false
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+env:
+  FLUTTER_VERSION: '3.24.0'
+  MAX_RELEASES: 10
+
+jobs:
+  build-windows:
+    name: Build Windows Application
+    runs-on: windows-latest
+    
+    outputs:
+      version: ${{ steps.build_info.outputs.version }}
+      commit_short: ${{ steps.build_info.outputs.commit_short }}
+      build_type: ${{ steps.build_info.outputs.build_type }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+          cache-key: flutter-${{ env.FLUTTER_VERSION }}-${{ hashFiles('**/pubspec.lock') }}
+          cache-path: ${{ runner.tool_cache }}/flutter
+      
+      - name: Verify Flutter Installation
+        run: |
+          flutter --version
+          flutter doctor -v
+      
+      - name: Get Dependencies
+        run: flutter pub get
+      
+      - name: Analyze Code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        continue-on-error: true
+      
+      - name: Build Windows App
+        run: |
+          $buildType = "${{ github.event.inputs.build_type }}"
+          if ($buildType -eq "debug") {
+            flutter build windows --debug
+          } else {
+            flutter build windows --release
+          }
+      
+      - name: Get Build Info
+        id: build_info
+        run: |
+          $buildType = "${{ github.event.inputs.build_type }}"
+          if ($buildType -eq "") { $buildType = "release" }
+          
+          # Get base version from pubspec.yaml
+          $baseVersion = (Get-Content pubspec.yaml | Select-String "version:" | Select-Object -First 1) -replace "version:\s*", "" -replace "\+.*", ""
+          
+          # Get short commit hash
+          $commit = "${{ github.sha }}".Substring(0, 7)
+          
+          # Get commit number (count of commits)
+          $commitCount = git rev-list --count HEAD
+          
+          # Create version: baseVersion-commitCount-commitHash (e.g., 1.0.0-123-abc1234)
+          $fullVersion = "$baseVersion-$commitCount-$commit"
+          
+          Write-Host "Base Version: $baseVersion"
+          Write-Host "Commit Count: $commitCount"
+          Write-Host "Commit: $commit"
+          Write-Host "Full Version: $fullVersion"
+          Write-Host "Build Type: $buildType"
+          
+          echo "version=$fullVersion" >> $env:GITHUB_OUTPUT
+          echo "base_version=$baseVersion" >> $env:GITHUB_OUTPUT
+          echo "commit_short=$commit" >> $env:GITHUB_OUTPUT
+          echo "commit_count=$commitCount" >> $env:GITHUB_OUTPUT
+          echo "build_type=$buildType" >> $env:GITHUB_OUTPUT
+      
+      - name: Create Distribution Package
+        run: |
+          $buildType = "${{ github.event.inputs.build_type }}"
+          if ($buildType -eq "debug") {
+            $sourcePath = "build\windows\x64\runner\Debug"
+          } else {
+            $sourcePath = "build\windows\x64\runner\Release"
+          }
+          
+          # Create distribution folder
+          $distPath = "dist"
+          New-Item -ItemType Directory -Force -Path $distPath
+          
+          # Copy the build output
+          $appName = "RepairAI"
+          $destPath = "$distPath\$appName"
+          
+          # Remove existing if present
+          if (Test-Path $destPath) {
+            Remove-Item -Recurse -Force $destPath
+          }
+          
+          # Copy all files
+          Copy-Item -Path $sourcePath -Destination $destPath -Recurse
+          
+          # Create version info file
+          $versionInfo = @"
+          RepairAI Windows Build
+          =====================
+          Version: ${{ steps.build_info.outputs.version }}
+          Build Type: $buildType
+          Commit: ${{ github.sha }}
+          Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+          Built by: GitHub Actions
+          "@
+          Set-Content -Path "$destPath\VERSION.txt" -Value $versionInfo
+          
+          # Create ZIP archive with version in name
+          $zipName = "RepairAI-${{ steps.build_info.outputs.version }}-Windows.zip"
+          Compress-Archive -Path $destPath -DestinationPath "$distPath\$zipName" -Force
+          
+          # Also create a 'latest' zip for easy download
+          Copy-Item "$distPath\$zipName" "$distPath\RepairAI-latest-Windows.zip"
+          
+          Write-Host "Build package created: $distPath\$zipName"
+          
+          # Save zip name for later
+          echo "zip_name=$zipName" >> $env:GITHUB_OUTPUT
+      
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RepairAI-Windows-${{ steps.build_info.outputs.version }}
+          path: dist/*.zip
+          retention-days: 30
+
+  create-release:
+    name: Create Release
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RepairAI-Windows-${{ needs.build-windows.outputs.version }}
+          path: dist
+      
+      - name: Get Current Releases
+        id: releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get list of releases sorted by creation date (oldest first)
+          gh release list --limit 50 --json tagName,createdAt,name --jq '.' > releases.json
+          cat releases.json
+          
+          # Count releases
+          RELEASE_COUNT=$(cat releases.json | jq 'length')
+          echo "release_count=$RELEASE_COUNT" >> $GITHUB_OUTPUT
+          
+          # Get releases to delete (if more than MAX_RELEASES)
+          if [ "$RELEASE_COUNT" -ge ${{ env.MAX_RELEASES }} ]; then
+            DELETE_COUNT=$((RELEASE_COUNT - ${{ env.MAX_RELEASES }} + 1))
+            cat releases.json | jq -r "sort_by(.createdAt) | .[:$DELETE_COUNT] | .[].tagName" > releases_to_delete.txt
+            echo "delete_count=$DELETE_COUNT" >> $GITHUB_OUTPUT
+          else
+            echo "" > releases_to_delete.txt
+            echo "delete_count=0" >> $GITHUB_OUTPUT
+          fi
+          
+          cat releases_to_delete.txt
+      
+      - name: Delete Old Releases
+        if: steps.releases.outputs.delete_count > 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Deleting old releases to maintain max ${{ env.MAX_RELEASES }} releases..."
+          while read -r tag; do
+            if [ -n "$tag" ]; then
+              echo "Deleting release: $tag"
+              gh release delete "$tag" --yes || echo "Failed to delete $tag (may not exist)"
+              git push --delete origin "$tag" || echo "Failed to delete tag $tag"
+            fi
+          done < releases_to_delete.txt
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.build-windows.outputs.version }}
+          name: RepairAI v${{ needs.build-windows.outputs.version }}
+          body: |
+            ## RepairAI Windows Build
+            
+            **Version:** ${{ needs.build-windows.outputs.version }}
+            **Build Type:** ${{ needs.build-windows.outputs.build_type }}
+            **Commit:** ${{ github.sha }}
+            **Date:** ${{ github.event.head_commit.timestamp }}
+            
+            ### Download
+            - Download the ZIP file from the assets below
+            - Extract and run `repair_ai.exe`
+            
+            ### Changes
+            ${{ github.event.head_commit.message }}
+            
+            ---
+            *This release will be automatically removed when newer releases exceed ${{ env.MAX_RELEASES }} total releases.*
+          files: |
+            dist/RepairAI-${{ needs.build-windows.outputs.version }}-Windows.zip
+            dist/RepairAI-latest-Windows.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.build-windows.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Type:** ${{ needs.build-windows.outputs.build_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Release Management" >> $GITHUB_STEP_SUMMARY
+          echo "- Previous releases: ${{ steps.releases.outputs.release_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Deleted old releases: ${{ steps.releases.outputs.delete_count }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Max releases allowed: ${{ env.MAX_RELEASES }}" >> $GITHUB_STEP_SUMMARY

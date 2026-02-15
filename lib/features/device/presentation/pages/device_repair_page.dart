@@ -275,6 +275,11 @@ class _DeviceRepairPageState extends ConsumerState<DeviceRepairPage>
   String _searchQuery = '';
   List<_SearchResult> _searchResults = [];
   bool _showSearchResults = false;
+  
+  // Minimized state for collapsible widgets
+  bool _isQuickDiagnosisMinimized = false;
+  bool _isQuickReferenceMinimized = false;
+  bool _isUnifiedSearchMinimized = false;
 
   @override
   void initState() {
@@ -1392,131 +1397,155 @@ Be specific to the $_selectedManufacturer $_selectedModel if information is avai
   Widget _buildDeviceSelector(bool isDark) {
     return Column(
       children: [
-        // Unified Search Bar
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  focusNode: _searchFocusNode,
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 15,
+        // Unified Search Bar with minimize button
+        GestureDetector(
+          onTap: () => setState(() => _isUnifiedSearchMinimized = !_isUnifiedSearchMinimized),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05),
                   ),
-                  decoration: InputDecoration(
-                    hintText: 'Search device, symptom, or file...',
-                    hintStyle: TextStyle(
-                      color: isDark ? Colors.white54 : Colors.black45,
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 15,
                     ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      color: isDark ? Colors.white54 : Colors.black45,
-                    ),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(
-                              Icons.clear,
-                              color: isDark ? Colors.white54 : Colors.black45,
-                              size: 20,
+                    decoration: InputDecoration(
+                      hintText: 'Search device, symptom, or file...',
+                      hintStyle: TextStyle(
+                        color: isDark ? Colors.white54 : Colors.black45,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      prefixIcon: Icon(
+                        Icons.search,
+                        color: isDark ? Colors.white54 : Colors.black45,
+                      ),
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_searchQuery.isNotEmpty)
+                            IconButton(
+                              icon: Icon(
+                                Icons.clear,
+                                color: isDark ? Colors.white54 : Colors.black45,
+                                size: 20,
+                              ),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchQuery = '';
+                                  _showSearchResults = false;
+                                });
+                              },
                             ),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchQuery = '';
-                                _showSearchResults = false;
-                              });
-                            },
-                          )
-                        : null,
+                          Icon(
+                            _isUnifiedSearchMinimized ? Icons.expand_more : Icons.expand_less,
+                            color: isDark ? Colors.white54 : Colors.black45,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            // Refresh button
-            GradientIconButton(
-              icon: Icons.refresh,
-              onPressed: _loadManufacturers,
-              size: 48,
-            ),
-          ],
+              const SizedBox(width: 8),
+              // Refresh button
+              GradientIconButton(
+                icon: Icons.refresh,
+                onPressed: _loadManufacturers,
+                size: 48,
+              ),
+            ],
+          ),
         ),
         
-        // Search Results Dropdown
-        if (_showSearchResults && _searchResults.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            constraints: const BoxConstraints(maxHeight: 300),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _searchResults.length,
-              itemBuilder: (context, index) {
-                final result = _searchResults[index];
-                return _buildSearchResultItem(result, isDark);
-              },
-            ),
-          ),
-        
-        // Current Selection Display
-        if (_selectedModel != null && !_showSearchResults)
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.phone_android, color: Colors.white, size: 16),
-                const SizedBox(width: 8),
-                Text(
-                  '$_selectedManufacturer $_selectedModel',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+        // Collapsible Search Results and Selection
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          crossFadeState: _isUnifiedSearchMinimized 
+              ? CrossFadeState.showFirst 
+              : CrossFadeState.showSecond,
+          firstChild: const SizedBox(height: 0, width: double.infinity),
+          secondChild: Column(
+            children: [
+              // Search Results Dropdown
+              if (_showSearchResults && _searchResults.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _searchResults.length,
+                    itemBuilder: (context, index) {
+                      final result = _searchResults[index];
+                      return _buildSearchResultItem(result, isDark);
+                    },
                   ),
                 ),
-                const SizedBox(width: 8),
-                Icon(
-                  Icons.check_circle,
-                  color: Colors.white.withOpacity(0.8),
-                  size: 16,
+              
+              // Current Selection Display
+              if (_selectedModel != null && !_showSearchResults)
+                Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: AppColors.primaryGradient,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.phone_android, color: Colors.white, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        '$_selectedManufacturer $_selectedModel',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.check_circle,
+                        color: Colors.white.withOpacity(0.8),
+                        size: 16,
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
+            ],
           ),
+        ),
       ],
     );
   }
@@ -1600,96 +1629,117 @@ Be specific to the $_selectedManufacturer $_selectedModel if information is avai
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header
-        Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(8),
+        // Header with minimize button
+        GestureDetector(
+          onTap: () => setState(() => _isQuickDiagnosisMinimized = !_isQuickDiagnosisMinimized),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.flash_on, color: Colors.white, size: 18),
               ),
-              child: const Icon(Icons.flash_on, color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Quick Diagnosis',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            const Spacer(),
-            if (_isAnalyzingSymptom)
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: isDark ? AppColors.primaryLight : AppColors.primary,
+              const SizedBox(width: 12),
+              Text(
+                'Quick Diagnosis',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
                 ),
               ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Select a symptom for instant AI-powered diagnosis:',
-          style: TextStyle(
-            fontSize: 12,
-            color: isDark ? Colors.white60 : Colors.black54,
-          ),
-        ),
-        const SizedBox(height: 12),
-        // Symptom chips
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _commonSymptoms.map((symptom) {
-            final isSelected = _selectedSymptom == symptom;
-            return GestureDetector(
-              onTap: _isAnalyzingSymptom ? null : () => _onSymptomSelected(symptom),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: isSelected ? AppColors.primaryGradient : null,
-                  color: isSelected 
-                      ? null 
-                      : (isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isSelected 
-                        ? Colors.transparent 
-                        : (isDark ? Colors.white24 : Colors.black12),
+              const Spacer(),
+              if (_isAnalyzingSymptom)
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: isDark ? AppColors.primaryLight : AppColors.primary,
                   ),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      _getSymptomIcon(symptom),
-                      size: 16,
-                      color: isSelected 
-                          ? Colors.white 
-                          : (isDark ? Colors.white70 : Colors.black54),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      symptom,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                        color: isSelected 
-                            ? Colors.white 
-                            : (isDark ? Colors.white70 : Colors.black87),
-                      ),
-                    ),
-                  ],
+              const SizedBox(width: 8),
+              Icon(
+                _isQuickDiagnosisMinimized ? Icons.expand_more : Icons.expand_less,
+                color: isDark ? Colors.white60 : Colors.black54,
+              ),
+            ],
+          ),
+        ),
+        // Collapsible content
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 200),
+          crossFadeState: _isQuickDiagnosisMinimized 
+              ? CrossFadeState.showFirst 
+              : CrossFadeState.showSecond,
+          firstChild: const SizedBox(height: 0, width: double.infinity),
+          secondChild: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 12),
+              Text(
+                'Select a symptom for instant AI-powered diagnosis:',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white60 : Colors.black54,
                 ),
               ),
-            );
-          }).toList(),
+              const SizedBox(height: 12),
+              // Symptom chips
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _commonSymptoms.map((symptom) {
+                  final isSelected = _selectedSymptom == symptom;
+                  return GestureDetector(
+                    onTap: _isAnalyzingSymptom ? null : () => _onSymptomSelected(symptom),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: isSelected ? AppColors.primaryGradient : null,
+                        color: isSelected 
+                            ? null 
+                            : (isDark ? Colors.white10 : Colors.black.withOpacity(0.05)),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSelected 
+                              ? Colors.transparent 
+                              : (isDark ? Colors.white24 : Colors.black12),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _getSymptomIcon(symptom),
+                            size: 16,
+                            color: isSelected 
+                                ? Colors.white 
+                                : (isDark ? Colors.white70 : Colors.black54),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            symptom,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              color: isSelected 
+                                  ? Colors.white 
+                                  : (isDark ? Colors.white70 : Colors.black87),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -2294,105 +2344,122 @@ Be specific to the $_selectedManufacturer $_selectedModel if information is avai
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
+          // Header with minimize button
+          GestureDetector(
+            onTap: () => setState(() => _isQuickReferenceMinimized = !_isQuickReferenceMinimized),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: _isQuickReferenceMinimized ? const Radius.circular(16) : Radius.zero,
+                  bottomRight: _isQuickReferenceMinimized ? const Radius.circular(16) : Radius.zero,
+                ),
               ),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, color: Colors.white, size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Quick Reference - $_selectedModel',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.white, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Quick Reference - $_selectedModel',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white24,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _selectedManufacturer?.toUpperCase() ?? '',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _selectedManufacturer?.toUpperCase() ?? '',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Icon(
+                    _isQuickReferenceMinimized ? Icons.expand_more : Icons.expand_less,
+                    color: Colors.white,
+                  ),
+                ],
+              ),
             ),
           ),
           
-          // Content Grid
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Row 1: Common ICs and Voltage Values
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildReferenceItem(
-                        isDark,
-                        icon: Icons.memory,
-                        title: 'Common ICs',
-                        items: _getCommonICs(),
-                        color: Colors.blue,
+          // Collapsible Content Grid
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 200),
+            crossFadeState: _isQuickReferenceMinimized 
+                ? CrossFadeState.showFirst 
+                : CrossFadeState.showSecond,
+            firstChild: const SizedBox(height: 0, width: double.infinity),
+            secondChild: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Row 1: Common ICs and Voltage Values
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReferenceItem(
+                          isDark,
+                          icon: Icons.memory,
+                          title: 'Common ICs',
+                          items: _getCommonICs(),
+                          color: Colors.blue,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildReferenceItem(
-                        isDark,
-                        icon: Icons.electrical_services,
-                        title: 'Key Voltages',
-                        items: _getKeyVoltages(),
-                        color: Colors.green,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildReferenceItem(
+                          isDark,
+                          icon: Icons.electrical_services,
+                          title: 'Key Voltages',
+                          items: _getKeyVoltages(),
+                          color: Colors.green,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                
-                // Row 2: Screw Locations and Disassembly
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildReferenceItem(
-                        isDark,
-                        icon: Icons.build,
-                        title: 'Screw Types',
-                        items: _getScrewTypes(),
-                        color: Colors.orange,
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Row 2: Screw Locations and Disassembly
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildReferenceItem(
+                          isDark,
+                          icon: Icons.build,
+                          title: 'Screw Types',
+                          items: _getScrewTypes(),
+                          color: Colors.orange,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildReferenceItem(
-                        isDark,
-                        icon: Icons.timer_outlined,
-                        title: 'Repair Time',
-                        items: _getRepairEstimates(),
-                        color: Colors.purple,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildReferenceItem(
+                          isDark,
+                          icon: Icons.timer_outlined,
+                          title: 'Repair Time',
+                          items: _getRepairEstimates(),
+                          color: Colors.purple,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ],
