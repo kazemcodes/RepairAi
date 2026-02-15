@@ -242,10 +242,11 @@ class _DeviceRepairPageState extends ConsumerState<DeviceRepairPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _loadManufacturers();
-    _loadFilesTab();
   }
+
+  // Load files when model is first selected
 
   @override
   void dispose() {
@@ -431,6 +432,9 @@ class _DeviceRepairPageState extends ConsumerState<DeviceRepairPage>
             }
           }
         }
+        
+        // Mark files tab as loaded
+        _filesTabLoading = false;
         
         // Filter solutions for selected model
         _solutions = index.solutions
@@ -732,16 +736,6 @@ Please provide a helpful, technical answer based on the schematic data above. If
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.schema_outlined, size: 20),
-                            SizedBox(width: 8),
-                            Text('Schematics'),
-                          ],
-                        ),
-                      ),
-                      Tab(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
                             Icon(Icons.folder_outlined, size: 20),
                             SizedBox(width: 8),
                             Text('Files'),
@@ -773,7 +767,6 @@ Please provide a helpful, technical answer based on the schematic data above. If
                   child: TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildSchematicsTab(isDark),
                       _buildFilesTab(isDark),
                       _buildChatTab(isDark),
                     ],
@@ -1028,71 +1021,9 @@ Please provide a helpful, technical answer based on the schematic data above. If
     );
   }
 
-  // Files Tab - shows PDF and PCB files
+  // Files Tab - shows files for selected model from _schematics list
   Widget _buildFilesTab(bool isDark) {
-    List<_FileItem> _files = [];
-    bool _isLoading = true;
-    String? _selectedFilePath;
-    _FileType? _selectedFileType;
-
-    Future<void> _loadFiles() async {
-      final List<_FileItem> files = [];
-      
-      final pdfExtensions = ['.pdf'];
-      final pcbExtensions = ['.pcbdoc', '.brd', '.bdv', '.asc', '.fz'];
-      
-      try {
-        final dataDir = Directory('data');
-        if (await dataDir.exists()) {
-          await for (final entity in dataDir.list()) {
-            if (entity is File) {
-              final lowerPath = entity.path.toLowerCase();
-              if (pdfExtensions.any((ext) => lowerPath.endsWith(ext))) {
-                final fileName = entity.path.split(Platform.pathSeparator).last;
-                files.add(_FileItem(name: fileName, path: entity.path, fileType: _FileType.pdf));
-              } else if (pcbExtensions.any((ext) => lowerPath.endsWith(ext))) {
-                final fileName = entity.path.split(Platform.pathSeparator).last;
-                files.add(_FileItem(name: fileName, path: entity.path, fileType: _FileType.pcb));
-              }
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('Error loading data directory: $e');
-      }
-      
-      try {
-        final filesDir = Directory('repairai-files');
-        if (await filesDir.exists()) {
-          await for (final entity in filesDir.list(recursive: true)) {
-            if (entity is File) {
-              final lowerPath = entity.path.toLowerCase();
-              if (pdfExtensions.any((ext) => lowerPath.endsWith(ext))) {
-                final fileName = entity.path.split(Platform.pathSeparator).last;
-                files.add(_FileItem(name: fileName, path: entity.path, fileType: _FileType.pdf));
-              } else if (pcbExtensions.any((ext) => lowerPath.endsWith(ext))) {
-                final fileName = entity.path.split(Platform.pathSeparator).last;
-                files.add(_FileItem(name: fileName, path: entity.path, fileType: _FileType.pcb));
-              }
-            }
-          }
-        }
-      } catch (e) {
-        debugPrint('Error loading repairai-files directory: $e');
-      }
-      
-      setState(() {
-        _files = files;
-        _isLoading = false;
-      });
-    }
-
-    @override
-    void initState() {
-      super.initState();
-      _loadFiles();
-    }
-
+    // Show file viewer if a file is selected
     if (_selectedFilePath != null) {
       if (_selectedFileType == _FileType.pdf) {
         return Stack(
@@ -1117,14 +1048,40 @@ Please provide a helpful, technical answer based on the schematic data above. If
       }
     }
 
-    if (_isLoading) {
+    // Show loading if schematics are still loading
+    if (_filesTabLoading) {
       return Center(child: CircularProgressIndicator(color: isDark ? AppColors.primaryLight : AppColors.primary));
     }
 
-    final pdfFiles = _files.where((f) => f.fileType == _FileType.pdf).toList();
-    final pcbFiles = _files.where((f) => f.fileType == _FileType.pcb).toList();
+    // Get files from _schematics list which is populated by _loadFilesForModel()
+    final files = _schematics;
+    
+    // Helper to determine file type from path
+    _FileType getFileType(String path) {
+      final lowerPath = path.toLowerCase();
+      if (lowerPath.endsWith('.pdf')) return _FileType.pdf;
+      if (lowerPath.endsWith('.md')) return _FileType.md;
+      if (lowerPath.endsWith('.txt')) return _FileType.md; // Treat .txt as markdown
+      if (lowerPath.endsWith('.png') || lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg') || lowerPath.endsWith('.gif')) return _FileType.image;
+      if (lowerPath.endsWith('.brd')) return _FileType.pcb;
+      if (lowerPath.contains('/boardview/') || lowerPath.endsWith('.bdv')) return _FileType.boardview;
+      return _FileType.md; // Default
+    }
 
-    if (_files.isEmpty) {
+    // Convert IndexEntry to _FileItem
+    _FileItem toFileItem(IndexEntry entry) {
+      final fileName = entry.path.split('/').last;
+      return _FileItem(name: fileName, path: entry.path, fileType: getFileType(entry.path));
+    }
+
+    // Filter by file type
+    final pdfFiles = files.where((f) => getFileType(f.path) == _FileType.pdf).map(toFileItem).toList();
+    final pcbFiles = files.where((f) => getFileType(f.path) == _FileType.pcb).map(toFileItem).toList();
+    final mdFiles = files.where((f) => getFileType(f.path) == _FileType.md).map(toFileItem).toList();
+    final imageFiles = files.where((f) => getFileType(f.path) == _FileType.image).map(toFileItem).toList();
+    final boardviewFiles = files.where((f) => getFileType(f.path) == _FileType.boardview).map(toFileItem).toList();
+
+    if (files.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1133,7 +1090,7 @@ Please provide a helpful, technical answer based on the schematic data above. If
             const SizedBox(height: 16),
             Text('No files found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight)),
             const SizedBox(height: 8),
-            Text('Add PDF or PCB files to the data folder', style: TextStyle(color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)),
+            Text('Select a model to view its files', style: TextStyle(color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight)),
           ],
         ),
       );
@@ -1142,14 +1099,29 @@ Please provide a helpful, technical answer based on the schematic data above. If
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (mdFiles.isNotEmpty) ...[
+          _buildSectionHeader('Documentation', Icons.description, isDark),
+          ...mdFiles.map((file) => _buildFileCard(isDark, file, (f) => setState(() { _selectedFilePath = f.path; _selectedFileType = f.fileType; }))),
+          const SizedBox(height: 24),
+        ],
         if (pdfFiles.isNotEmpty) ...[
           _buildSectionHeader('PDF Documents', Icons.picture_as_pdf, isDark),
           ...pdfFiles.map((file) => _buildFileCard(isDark, file, (f) => setState(() { _selectedFilePath = f.path; _selectedFileType = f.fileType; }))),
           const SizedBox(height: 24),
         ],
+        if (boardviewFiles.isNotEmpty) ...[
+          _buildSectionHeader('BoardView Files', Icons.grid_on, isDark),
+          ...boardviewFiles.map((file) => _buildFileCard(isDark, file, (f) => setState(() { _selectedFilePath = f.path; _selectedFileType = f.fileType; }))),
+          const SizedBox(height: 24),
+        ],
         if (pcbFiles.isNotEmpty) ...[
-          _buildSectionHeader('PCB/BoardView Files', Icons.developer_board, isDark),
+          _buildSectionHeader('PCB Files', Icons.developer_board, isDark),
           ...pcbFiles.map((file) => _buildFileCard(isDark, file, (f) => setState(() { _selectedFilePath = f.path; _selectedFileType = f.fileType; }))),
+          const SizedBox(height: 24),
+        ],
+        if (imageFiles.isNotEmpty) ...[
+          _buildSectionHeader('Images', Icons.image, isDark),
+          ...imageFiles.map((file) => _buildFileCard(isDark, file, (f) => setState(() { _selectedFilePath = f.path; _selectedFileType = f.fileType; }))),
         ],
       ],
     );
@@ -1386,7 +1358,7 @@ class Manufacturer {
 }
 
 /// File type enum for Files tab
-enum _FileType { pdf, pcb }
+enum _FileType { pdf, pcb, md, image, boardview }
 
 /// File item model for Files tab
 class _FileItem {
