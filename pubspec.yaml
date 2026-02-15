@@ -66,6 +66,10 @@ dependencies:
   # HTML rendering
   flutter_html: ^3.0.0-beta.2
 
+  # PDF viewing
+  flutter_pdfview: ^1.4.0
+  syncfusion_flutter_pdfviewer: ^28.1.33
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -83,3 +87,4 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - data/

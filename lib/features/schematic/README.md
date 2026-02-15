@@ -201,10 +201,32 @@ node src/index.js boardview-convert --input board.brd --output ./output --genera
 ```
 
 Supported formats:
-- `.brd` - Binary/text format
+- `.brd` - Cadence Allegro Board file
 - `.bdv`, `.bv` - Encoded format
 - `.asc` - ASCII format
-- `.fz` - Encrypted format (requires key)
+- `.fz` - Target 3001! format
+- `.pcbdoc` - Altium Designer PCB file (requires export to ASC format first)
+
+## Altium Designer (.pcbdoc) Support
+
+To use Altium Designer PCB files (.pcbdoc):
+
+### Method 1: Export to ASCII (Recommended)
+1. Open your .pcbdoc file in Altium Designer
+2. Go to File → Export → Export to CAD
+3. Select "ASCII" format
+4. Save as .asc file
+5. Use the converter: `node src/index.js boardview-convert --input board.asc --output ./output`
+
+### Method 2: Direct Import
+The app supports importing .pcbdoc files directly through the Files section.
+Place .pcbdoc files in the `data/` folder and they will appear in the Files tab.
+Note: .pcbdoc files require conversion to boardview JSON format first.
+
+### Viewing in App
+1. Navigate to **Files** in the sidebar
+2. Tap on a .pcbdoc file to view its details
+3. The app will attempt to convert and display the boardview
 
 ## Testing
 

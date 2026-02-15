@@ -23,7 +23,7 @@ class _ShellPageState extends State<ShellPage> {
       selectedIcon: Icons.dashboard,
       label: 'Dashboard',
       route: AppRoutes.home,
-      routes: ['/schematic', '/solution', '/chat', '/device'], // Child routes to highlight dashboard
+      routes: ['/schematic', '/chat', '/device', '/files'], // Child routes to highlight dashboard
     ),
     _NavItem(
       icon: Icons.people_outline,
