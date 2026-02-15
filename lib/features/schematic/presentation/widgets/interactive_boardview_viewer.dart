@@ -267,12 +267,15 @@ class _InteractiveBoardViewViewerState
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            ...layers.map((layer) => CheckboxListTile(
-              dense: true,
-              title: Text(layer['name'] as String, style: const TextStyle(fontSize: 12)),
-              value: _visibleLayers.contains(layer['id']),
-              onChanged: (value) => _toggleLayer(layer['id'] as String),
-              secondary: Icon(layer['icon'] as IconData, size: 16),
+            ...layers.map((layer) => SizedBox(
+              width: double.infinity,
+              child: CheckboxListTile(
+                dense: true,
+                title: Text(layer['name'] as String, style: const TextStyle(fontSize: 12)),
+                value: _visibleLayers.contains(layer['id']),
+                onChanged: (value) => _toggleLayer(layer['id'] as String),
+                secondary: Icon(layer['icon'] as IconData, size: 16),
+              ),
             )),
           ],
         ),
